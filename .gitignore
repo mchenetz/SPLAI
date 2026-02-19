@@ -1,2 +1,24 @@
-.gocache/
+# OS
 .DS_Store
+
+# Go build/test
+.gocache/
+bin/
+dist/
+coverage.out
+*.coverprofile
+
+# Local binaries
+splaictl
+splai-worker
+
+# Env/local config
+.env
+.env.*
+*.local
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
