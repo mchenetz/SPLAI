@@ -1,0 +1,5 @@
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS lease_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_report_key TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_tasks_lease_expiry ON tasks (status, lease_expires_at);

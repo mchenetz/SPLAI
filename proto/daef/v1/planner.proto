@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package daef.v1;
+
+option go_package = "github.com/example/daef/proto/daef/v1;daefv1";
+
+import "daef/v1/common.proto";
+
+service PlannerService {
+  rpc CompileJob(CompileJobRequest) returns (CompileJobResponse);
+}
+
+message CompileJobRequest {
+  string job_id = 1;
+  string mode = 2; // template|llm|hybrid
+  string input = 3;
+  string policy = 4;
+}
+
+message CompileJobResponse {
+  DAG dag = 1;
+}

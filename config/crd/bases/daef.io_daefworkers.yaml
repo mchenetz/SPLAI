@@ -1,0 +1,78 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: daefworkers.daef.io
+spec:
+  group: daef.io
+  scope: Cluster
+  names:
+    plural: daefworkers
+    singular: daefworker
+    kind: DAEFWorker
+    shortNames:
+      - dw
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [workerId, cpu, memory, gpu]
+              properties:
+                workerId:
+                  type: string
+                cpu:
+                  type: integer
+                memory:
+                  type: string
+                gpu:
+                  type: boolean
+                locality:
+                  type: string
+                models:
+                  type: array
+                  items:
+                    type: string
+                tools:
+                  type: array
+                  items:
+                    type: string
+            status:
+              type: object
+              properties:
+                health:
+                  type: string
+                  enum: [healthy, degraded, unhealthy]
+                utilization:
+                  type: object
+                  properties:
+                    cpuPercent:
+                      type: number
+                    memoryPercent:
+                      type: number
+                queueDepth:
+                  type: integer
+                runningTasks:
+                  type: integer
+                lastHeartbeat:
+                  type: string
+                  format: date-time
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Health
+          type: string
+          jsonPath: .status.health
+        - name: CPU
+          type: integer
+          jsonPath: .spec.cpu
+        - name: GPU
+          type: boolean
+          jsonPath: .spec.gpu
+        - name: LastHeartbeat
+          type: date
+          jsonPath: .status.lastHeartbeat

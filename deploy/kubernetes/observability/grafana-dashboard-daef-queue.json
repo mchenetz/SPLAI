@@ -1,0 +1,52 @@
+{
+  "title": "DAEF Queue Reliability",
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "Claim/Ack/Nack Rates",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum(rate(queue_claimed_total[5m])) by (queue_backend)", "legendFormat": "claimed {{queue_backend}}"},
+        {"expr": "sum(rate(queue_acked_total[5m])) by (queue_backend)", "legendFormat": "acked {{queue_backend}}"},
+        {"expr": "sum(rate(queue_nacked_total[5m])) by (queue_backend,reason)", "legendFormat": "nacked {{queue_backend}} {{reason}}"}
+      ]
+    },
+    {
+      "title": "Dead Letter Count",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "dead_letter_count", "legendFormat": "dead {{queue_backend}}"}
+      ]
+    },
+    {
+      "title": "Dead Letter Requeue Rate",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum(rate(dead_letter_requeued_total[5m])) by (queue_backend)", "legendFormat": "requeued {{queue_backend}}"}
+      ]
+    },
+    {
+      "title": "Expired Lease Requeues",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum(rate(queue_expired_requeued_total[5m])) by (queue_backend)", "legendFormat": "expired {{queue_backend}}"}
+      ]
+    },
+    {
+      "title": "Scheduler Assignment Error Rate",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum(rate(scheduler_assignment_errors_total[5m])) by (worker_id)", "legendFormat": "worker {{worker_id}}"}
+      ]
+    },
+    {
+      "title": "Admin Actions By Actor",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum(rate(admin_actions_total[5m])) by (action,actor,result)", "legendFormat": "{{action}} {{actor}} {{result}}"}
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

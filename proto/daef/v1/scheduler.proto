@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package daef.v1;
+
+option go_package = "github.com/example/daef/proto/daef/v1;daefv1";
+
+import "daef/v1/common.proto";
+
+service SchedulerService {
+  rpc EnqueueDAG(EnqueueDAGRequest) returns (EnqueueDAGResponse);
+  rpc PollAssignments(PollAssignmentsRequest) returns (PollAssignmentsResponse);
+  rpc ReportTaskResult(ReportTaskResultRequest) returns (Empty);
+}
+
+message EnqueueDAGRequest {
+  string job_id = 1;
+  DAG dag = 2;
+}
+
+message EnqueueDAGResponse {
+  bool accepted = 1;
+}
+
+message PollAssignmentsRequest {
+  string worker_id = 1;
+  uint32 max_tasks = 2;
+}
+
+message Assignment {
+  string job_id = 1;
+  Task task = 2;
+}
+
+message PollAssignmentsResponse {
+  repeated Assignment assignments = 1;
+}
+
+message ReportTaskResultRequest {
+  string worker_id = 1;
+  string job_id = 2;
+  string task_id = 3;
+  string phase = 4;
+  string output_artifact_uri = 5;
+  string error = 6;
+  uint32 attempts = 7;
+}

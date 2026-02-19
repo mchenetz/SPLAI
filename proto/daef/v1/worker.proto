@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package daef.v1;
+
+option go_package = "github.com/example/daef/proto/daef/v1;daefv1";
+
+import "daef/v1/common.proto";
+
+service WorkerService {
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message RegisterWorkerRequest {
+  string worker_id = 1;
+  uint32 cpu = 2;
+  string memory = 3;
+  bool gpu = 4;
+  repeated string models = 5;
+  repeated string tools = 6;
+  string locality = 7;
+}
+
+message RegisterWorkerResponse {
+  bool accepted = 1;
+  uint32 heartbeat_interval_seconds = 2;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  uint32 queue_depth = 2;
+  uint32 running_tasks = 3;
+  float cpu_utilization = 4;
+  float memory_utilization = 5;
+  string health = 6;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+  repeated string control_messages = 2;
+}
