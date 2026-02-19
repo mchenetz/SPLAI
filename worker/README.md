@@ -25,3 +25,25 @@ The worker agent is designed as a long-running process that:
 - bounded in-flight tasks
 - retry only delegated to scheduler
 - no implicit external network access during task execution
+
+## Runtime knobs
+
+- `SPLAI_ARTIFACT_ROOT` (default `/tmp/splai-artifacts`): local root where task outputs are written before being reported as `artifact://...` URIs.
+- `SPLAI_MODEL_CACHE_DIR` (default `${SPLAI_ARTIFACT_ROOT}/models`): local model cache root used for `model_download` and optional auto-install behavior.
+- `SPLAI_API_TOKEN` (optional): bearer token sent as `X-SPLAI-Token` for register/heartbeat/assignment/report requests when control-plane auth is enabled.
+- `HF_TOKEN` (optional): token passed through to `hf` / `huggingface-cli` / `git` model download flows for private Hugging Face repos.
+
+## Bootstrap via `splaictl`
+
+1. Build/install binaries: `make install-worker`
+2. Join a worker host: `splaictl worker join --url http://<gateway>:8080`
+3. Validate connectivity: `splaictl verify --url http://<gateway>:8080 --worker-id <worker-id>`
+
+## Implemented task executors
+
+- `llm_inference`
+- `model_download` (Hugging Face model prefetch/install)
+- `tool_execution`
+- `embedding`
+- `retrieval`
+- `aggregation`

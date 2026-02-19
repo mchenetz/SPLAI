@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/daef/pkg/daefapi"
-	"github.com/example/daef/worker/internal/config"
-	"github.com/example/daef/worker/internal/executor"
-	"github.com/example/daef/worker/internal/heartbeat"
-	"github.com/example/daef/worker/internal/telemetry"
+	"github.com/example/splai/pkg/splaiapi"
+	"github.com/example/splai/worker/internal/config"
+	"github.com/example/splai/worker/internal/executor"
+	"github.com/example/splai/worker/internal/heartbeat"
+	"github.com/example/splai/worker/internal/telemetry"
 )
 
 type Runtime struct {
@@ -58,6 +58,9 @@ func (r *Runtime) pollAndRun(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if tok := strings.TrimSpace(r.cfg.APIToken); tok != "" {
+		req.Header.Set("X-SPLAI-Token", tok)
+	}
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -67,7 +70,7 @@ func (r *Runtime) pollAndRun(ctx context.Context) error {
 		return statusError(resp.Status)
 	}
 
-	var result daefapi.PollAssignmentsResponse
+	var result splaiapi.PollAssignmentsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return err
 	}
@@ -79,7 +82,7 @@ func (r *Runtime) pollAndRun(ctx context.Context) error {
 		artifactURI, runErr := r.exec.Run(ctx, executor.Task{JobID: a.JobID, TaskID: a.TaskID, Type: a.Type, Input: a.Inputs})
 		duration := time.Since(started)
 
-		report := daefapi.ReportTaskResultRequest{
+		report := splaiapi.ReportTaskResultRequest{
 			WorkerID:       r.cfg.WorkerID,
 			JobID:          a.JobID,
 			TaskID:         a.TaskID,
@@ -103,7 +106,7 @@ func (r *Runtime) pollAndRun(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runtime) report(ctx context.Context, payload daefapi.ReportTaskResultRequest) error {
+func (r *Runtime) report(ctx context.Context, payload splaiapi.ReportTaskResultRequest) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -114,6 +117,9 @@ func (r *Runtime) report(ctx context.Context, payload daefapi.ReportTaskResultRe
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if tok := strings.TrimSpace(r.cfg.APIToken); tok != "" {
+		req.Header.Set("X-SPLAI-Token", tok)
+	}
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return err

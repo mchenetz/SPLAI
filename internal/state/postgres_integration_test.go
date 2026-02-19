@@ -8,9 +8,9 @@ import (
 )
 
 func TestPostgresStoreIntegrationAuditAndTasks(t *testing.T) {
-	dsn := os.Getenv("DAEF_POSTGRES_DSN_INTEGRATION")
+	dsn := os.Getenv("SPLAI_POSTGRES_DSN_INTEGRATION")
 	if dsn == "" {
-		t.Skip("set DAEF_POSTGRES_DSN_INTEGRATION to run Postgres integration tests")
+		t.Skip("set SPLAI_POSTGRES_DSN_INTEGRATION to run Postgres integration tests")
 	}
 	store, err := NewPostgresStore(dsn)
 	if err != nil {

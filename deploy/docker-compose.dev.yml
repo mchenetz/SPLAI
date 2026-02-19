@@ -3,21 +3,21 @@ version: "3.9"
 services:
   postgres:
     image: postgres:16
-    container_name: daef-postgres
+    container_name: splai-postgres
     environment:
-      POSTGRES_USER: daef
-      POSTGRES_PASSWORD: daef
-      POSTGRES_DB: daef
+      POSTGRES_USER: splai
+      POSTGRES_PASSWORD: splai
+      POSTGRES_DB: splai
     ports:
       - "5432:5432"
     volumes:
-      - daef_pgdata:/var/lib/postgresql/data
+      - splai_pgdata:/var/lib/postgresql/data
 
   redis:
     image: redis:7
-    container_name: daef-redis
+    container_name: splai-redis
     ports:
       - "6379:6379"
 
 volumes:
-  daef_pgdata:
+  splai_pgdata:

@@ -3,5 +3,5 @@ package main
 import "log"
 
 func main() {
-	log.Println("daef planner starting")
+	log.Println("splai planner starting")
 }

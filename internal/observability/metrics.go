@@ -136,7 +136,7 @@ func cloneMap(in map[string]string) map[string]string {
 func sanitizeMetricName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "daef_metric"
+		return "splai_metric"
 	}
 	out := make([]rune, 0, len(name))
 	for i, r := range name {

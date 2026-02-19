@@ -1,0 +1,13 @@
+[Unit]
+Description=SPLAI Worker Agent
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile={{ENV_FILE}}
+ExecStart={{WORKER_BIN}}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

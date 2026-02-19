@@ -1,0 +1,7 @@
+SPLAI NFR proof at 2026-02-19T16:17:44Z
+workers=10000 jobs=20000 target_util=0.70
+=== RUN   TestNFRUtilizationProof
+    nfr_proof_test.go:58: workers=10000 jobs=20000 assigned_workers=8541 utilization=0.8541 target=0.7000
+--- PASS: TestNFRUtilizationProof (26.10s)
+PASS
+ok  	github.com/example/splai/internal/scheduler	26.324s

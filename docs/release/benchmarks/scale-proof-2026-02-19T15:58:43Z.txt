@@ -1,0 +1,9 @@
+SPLAI scale proof benchmark at 2026-02-19T15:58:43Z
+workers=1000
+goos: darwin
+goarch: arm64
+pkg: github.com/example/splai/internal/scheduler
+BenchmarkAssignmentPath-12    	    7357	   1246413 ns/op	  197407 B/op	     108 allocs/op
+PASS
+ok  	github.com/example/splai/internal/scheduler	9.425s
+ns_per_op=1246413

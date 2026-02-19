@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/daef/internal/observability"
+	"github.com/example/splai/internal/observability"
 )
 
 type RedisQueueConfig struct {
@@ -29,7 +29,7 @@ type RedisQueue struct {
 
 func NewRedisQueue(cfg RedisQueueConfig) *RedisQueue {
 	if cfg.Key == "" {
-		cfg.Key = "daef:tasks"
+		cfg.Key = "splai:tasks"
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 3 * time.Second

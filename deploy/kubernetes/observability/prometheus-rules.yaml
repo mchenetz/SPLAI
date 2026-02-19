@@ -1,63 +1,63 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: daef-alerts
+  name: splai-alerts
   namespace: monitoring
 spec:
   groups:
-    - name: daef-queue
+    - name: splai-queue
       rules:
-        - alert: DAEFDeadLetterNonZero
+        - alert: SPLAIDeadLetterNonZero
           expr: max_over_time(dead_letter_count[10m]) > 0
           for: 10m
           labels:
             severity: warning
-            service: daef-gateway
+            service: splai-gateway
           annotations:
-            summary: "DAEF dead-letter queue has entries"
+            summary: "SPLAI dead-letter queue has entries"
             description: "dead_letter_count has been non-zero for at least 10 minutes. Inspect /v1/admin/queue/dead-letter and requeue safe tasks."
-            runbook_url: "https://example.local/daef/runbooks/queue-reliability"
+            runbook_url: "https://example.local/splai/runbooks/queue-reliability"
 
-        - alert: DAEFQueueRetryStorm
+        - alert: SPLAIQueueRetryStorm
           expr: sum(rate(queue_nacked_total{reason="error"}[5m])) > 5
           for: 10m
           labels:
             severity: critical
-            service: daef-gateway
+            service: splai-gateway
           annotations:
-            summary: "DAEF retry storm detected"
+            summary: "SPLAI retry storm detected"
             description: "Error nacks are above threshold. Verify worker health, lease settings, and backend availability."
-            runbook_url: "https://example.local/daef/runbooks/queue-reliability"
+            runbook_url: "https://example.local/splai/runbooks/queue-reliability"
 
-        - alert: DAEFSchedulerAssignmentErrors
+        - alert: SPLAISchedulerAssignmentErrors
           expr: sum(rate(scheduler_assignment_errors_total[5m])) > 1
           for: 5m
           labels:
             severity: warning
-            service: daef-gateway
+            service: splai-gateway
           annotations:
-            summary: "DAEF scheduler assignment errors"
+            summary: "SPLAI scheduler assignment errors"
             description: "Scheduler assignment errors are sustained. Check queue backend connectivity and task state consistency."
-            runbook_url: "https://example.local/daef/runbooks/queue-reliability"
+            runbook_url: "https://example.local/splai/runbooks/queue-reliability"
 
-        - alert: DAEFExpiredLeaseChurn
+        - alert: SPLAIExpiredLeaseChurn
           expr: sum(rate(queue_expired_requeued_total[5m])) > 3
           for: 10m
           labels:
             severity: warning
-            service: daef-gateway
+            service: splai-gateway
           annotations:
-            summary: "DAEF lease churn is high"
+            summary: "SPLAI lease churn is high"
             description: "Expired lease requeues are elevated. Verify heartbeat cadence, worker stability, and lease timeout."
-            runbook_url: "https://example.local/daef/runbooks/queue-reliability"
+            runbook_url: "https://example.local/splai/runbooks/queue-reliability"
 
-        - alert: DAEFUnusualOperatorActivity
+        - alert: SPLAIUnusualOperatorActivity
           expr: sum(rate(admin_actions_total{action="dead_letter_requeue",result="ok"}[5m])) > 2
           for: 10m
           labels:
             severity: warning
-            service: daef-gateway
+            service: splai-gateway
           annotations:
-            summary: "DAEF unusual operator requeue activity"
+            summary: "SPLAI unusual operator requeue activity"
             description: "High dead-letter requeue rate detected. Validate incident context and operator intent."
-            runbook_url: "https://example.local/daef/runbooks/queue-reliability"
+            runbook_url: "https://example.local/splai/runbooks/queue-reliability"

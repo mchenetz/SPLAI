@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/daef/internal/observability"
-	"github.com/example/daef/internal/planner"
-	"github.com/example/daef/internal/scheduler"
+	"github.com/example/splai/internal/observability"
+	"github.com/example/splai/internal/planner"
+	"github.com/example/splai/internal/scheduler"
 )
 
 func TestMetricsPrometheusEndpoint(t *testing.T) {

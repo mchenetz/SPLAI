@@ -1,0 +1,4 @@
+1. Install or upgrade complete for release {{ .Release.Name }}.
+2. API gateway service: {{ include "splai.fullname" . }}-api-gateway:{{ .Values.apiGateway.service.port }}
+3. For local access:
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "splai.fullname" . }}-api-gateway 8080:{{ .Values.apiGateway.service.port }}

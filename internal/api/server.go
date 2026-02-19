@@ -9,16 +9,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/example/daef/internal/observability"
-	"github.com/example/daef/internal/planner"
-	"github.com/example/daef/internal/scheduler"
-	"github.com/example/daef/internal/state"
-	"github.com/example/daef/pkg/daefapi"
+	"github.com/example/splai/internal/models"
+	"github.com/example/splai/internal/observability"
+	"github.com/example/splai/internal/planner"
+	"github.com/example/splai/internal/scheduler"
+	"github.com/example/splai/internal/state"
+	"github.com/example/splai/pkg/splaiapi"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Server struct {
@@ -26,11 +30,33 @@ type Server struct {
 	engine  *scheduler.Engine
 	auth    *authorizer
 	safety  *adminSafety
+	router  *models.Router
+	compat  bool
+	timeout time.Duration
 	seq     uint64
 }
 
 func NewServer(p *planner.Compiler, e *scheduler.Engine) *Server {
-	return &Server{planner: p, engine: e, auth: newAuthorizerFromEnv(), safety: newAdminSafetyFromEnv()}
+	router, err := models.LoadFromEnv()
+	if err != nil {
+		log.Printf("model router disabled due to config error: %v", err)
+		router = models.NewDefaultRouter()
+	}
+	timeout := 60 * time.Second
+	if raw := strings.TrimSpace(os.Getenv("SPLAI_OPENAI_COMPAT_TIMEOUT_SECONDS")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			timeout = time.Duration(v) * time.Second
+		}
+	}
+	return &Server{
+		planner: p,
+		engine:  e,
+		auth:    newAuthorizerFromEnv(),
+		safety:  newAdminSafetyFromEnv(),
+		router:  router,
+		compat:  parseEnvBool("SPLAI_OPENAI_COMPAT", false),
+		timeout: timeout,
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -45,7 +71,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/tasks/report", s.handleTaskReport)
 	mux.HandleFunc("/v1/admin/queue/dead-letter", s.handleDeadLetterQueue)
 	mux.HandleFunc("/v1/admin/audit", s.handleAuditEvents)
-	return withLogging(mux)
+	mux.HandleFunc("/v1/admin/models/prefetch", s.handleModelPrefetch)
+	if s.compat {
+		mux.HandleFunc("/v1/chat/completions", s.handleOpenAIChatCompletions)
+		mux.HandleFunc("/v1/responses", s.handleOpenAIResponses)
+	}
+	return withTracing(withLogging(mux))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -82,7 +113,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req daefapi.SubmitJobRequest
+	var req splaiapi.SubmitJobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -90,21 +121,404 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	if req.Priority == "" {
 		req.Priority = "interactive"
 	}
+	if req.LatencyClass == "" {
+		req.LatencyClass = req.Priority
+	}
 	if req.Policy == "" {
 		req.Policy = "enterprise-default"
 	}
+	if req.PlannerMode == "" {
+		req.PlannerMode = "template"
+	}
+	route := s.router.Route(models.RouteInput{
+		LatencyClass:       req.LatencyClass,
+		ReasoningRequired:  req.ReasoningRequired,
+		DataClassification: req.DataClassification,
+		RequestedModel:     req.Model,
+	})
+	if req.Model == "" {
+		req.Model = route.Model
+	}
 	tenant := tenantFromRequest(r, req.Tenant)
-	if _, ok := s.requireTenantAccess(w, r, tenant); !ok {
+	if _, ok := s.requireTenantAction(w, r, tenant, "submit"); !ok {
 		return
 	}
 
 	jobID := fmt.Sprintf("job-%d", atomic.AddUint64(&s.seq, 1))
-	dag := s.planner.Compile(jobID, req.Type, req.Input)
-	if err := s.engine.AddJob(jobID, tenant, req.Type, req.Input, req.Policy, req.Priority, dag); err != nil {
+	dag := s.planner.CompileWithMode(jobID, req.Type, req.Input, req.PlannerMode)
+	dag = injectModelInstallTasks(dag, req.Model, req.InstallModelIfMissing)
+	if err := s.engine.AddJob(
+		jobID,
+		tenant,
+		req.Type,
+		req.Input,
+		req.Policy,
+		req.Priority,
+		req.DataClassification,
+		req.Model,
+		req.NetworkIsolation,
+		dag,
+	); err != nil {
+		if strings.Contains(err.Error(), "policy denied submit") {
+			writeError(w, http.StatusForbidden, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusAccepted, daefapi.SubmitJobResponse{JobID: jobID})
+	_ = s.engine.AppendAuditEvent(state.AuditEventRecord{
+		Action:    "model_route_decision",
+		Actor:     "system/router",
+		Tenant:    tenant,
+		Resource:  "models",
+		Result:    "ok",
+		Details:   fmt.Sprintf("job_id=%s backend=%s model=%s rule=%s", jobID, route.Backend, route.Model, route.Rule),
+		CreatedAt: time.Now().UTC(),
+	})
+	writeJSON(w, http.StatusAccepted, splaiapi.SubmitJobResponse{JobID: jobID})
+}
+
+func (s *Server) handleModelPrefetch(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireScopes(w, r, "operator"); !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req splaiapi.PrefetchModelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	req.Model = strings.TrimSpace(req.Model)
+	if req.Model == "" {
+		writeError(w, http.StatusBadRequest, "model is required")
+		return
+	}
+	req.Source = strings.ToLower(strings.TrimSpace(req.Source))
+	if req.Source == "" {
+		req.Source = "huggingface"
+	}
+	if req.Source != "huggingface" {
+		writeError(w, http.StatusBadRequest, "source must be huggingface")
+		return
+	}
+	onlyMissing := true
+	if req.OnlyMissing != nil {
+		onlyMissing = *req.OnlyMissing
+	}
+	priority := strings.TrimSpace(req.Priority)
+	if priority == "" {
+		priority = "standard"
+	}
+	workers, err := s.engine.ListWorkers()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	targetSet := map[string]struct{}{}
+	if len(req.Workers) > 0 {
+		for _, w := range req.Workers {
+			if id := strings.TrimSpace(w); id != "" {
+				targetSet[id] = struct{}{}
+			}
+		}
+	}
+	targeted := make([]state.WorkerRecord, 0, len(workers))
+	for _, w := range workers {
+		if strings.EqualFold(w.Health, "unhealthy") {
+			continue
+		}
+		if len(targetSet) > 0 {
+			if _, ok := targetSet[w.ID]; !ok {
+				continue
+			}
+		}
+		targeted = append(targeted, w)
+	}
+	if len(targeted) == 0 {
+		writeError(w, http.StatusBadRequest, "no eligible workers found")
+		return
+	}
+
+	jobID := fmt.Sprintf("job-%d", atomic.AddUint64(&s.seq, 1))
+	tasks := make([]planner.Task, 0, len(targeted))
+	workerIDs := make([]string, 0, len(targeted))
+	for i, w := range targeted {
+		taskID := fmt.Sprintf("prefetch-%03d", i+1)
+		tasks = append(tasks, planner.Task{
+			TaskID:     taskID,
+			Type:       "model_download",
+			TimeoutSec: 1800,
+			MaxRetries: 1,
+			Inputs: map[string]string{
+				"model":           req.Model,
+				"source":          req.Source,
+				"only_if_missing": strconv.FormatBool(onlyMissing),
+				"_target_worker":  w.ID,
+				"_data_locality":  w.Locality,
+			},
+		})
+		workerIDs = append(workerIDs, w.ID)
+	}
+	sort.Strings(workerIDs)
+	dag := planner.DAG{
+		DAGID: "dag-prefetch-" + jobID,
+		Tasks: tasks,
+	}
+	tenant := tenantFromRequest(r, req.Tenant)
+	if err := s.engine.AddJob(jobID, tenant, "model_prefetch", req.Model, "enterprise-default", priority, "internal", req.Model, "default", dag); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, splaiapi.PrefetchModelResponse{
+		JobID:           jobID,
+		Model:           req.Model,
+		Source:          req.Source,
+		TargetedWorkers: workerIDs,
+		ScheduledTasks:  len(tasks),
+		OnlyMissing:     onlyMissing,
+	})
+}
+
+type openAIChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openAIChatRequest struct {
+	Model    string              `json:"model"`
+	Messages []openAIChatMessage `json:"messages"`
+	Stream   bool                `json:"stream"`
+	User     string              `json:"user,omitempty"`
+}
+
+type openAIResponsesRequest struct {
+	Model  string `json:"model"`
+	Input  any    `json:"input"`
+	Stream bool   `json:"stream"`
+	User   string `json:"user,omitempty"`
+}
+
+func (s *Server) handleOpenAIChatCompletions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req openAIChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Stream {
+		writeError(w, http.StatusBadRequest, "stream=true is not supported in compatibility mode")
+		return
+	}
+	prompt := buildChatPrompt(req.Messages)
+	if prompt == "" {
+		writeError(w, http.StatusBadRequest, "messages is required")
+		return
+	}
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		model = "llama3-8b-q4"
+	}
+	content, usedModel, err := s.runOpenAICompatJob(r, model, prompt)
+	if err != nil {
+		writeError(w, httpStatusForCompatErr(err), err.Error())
+		return
+	}
+	id := fmt.Sprintf("chatcmpl-%d", atomic.AddUint64(&s.seq, 1))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      id,
+		"object":  "chat.completion",
+		"created": time.Now().UTC().Unix(),
+		"model":   usedModel,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": content,
+				},
+				"finish_reason": "stop",
+			},
+		},
+		"usage": map[string]int{
+			"prompt_tokens":     0,
+			"completion_tokens": 0,
+			"total_tokens":      0,
+		},
+	})
+}
+
+func (s *Server) handleOpenAIResponses(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req openAIResponsesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Stream {
+		writeError(w, http.StatusBadRequest, "stream=true is not supported in compatibility mode")
+		return
+	}
+	prompt := buildResponsesPrompt(req.Input)
+	if prompt == "" {
+		writeError(w, http.StatusBadRequest, "input is required")
+		return
+	}
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		model = "llama3-8b-q4"
+	}
+	content, usedModel, err := s.runOpenAICompatJob(r, model, prompt)
+	if err != nil {
+		writeError(w, httpStatusForCompatErr(err), err.Error())
+		return
+	}
+	id := fmt.Sprintf("resp_%d", atomic.AddUint64(&s.seq, 1))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      id,
+		"object":  "response",
+		"created": time.Now().UTC().Unix(),
+		"model":   usedModel,
+		"status":  "completed",
+		"output": []map[string]any{
+			{
+				"id":   "msg_" + id,
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]any{
+					{"type": "output_text", "text": content, "annotations": []any{}},
+				},
+			},
+		},
+		"usage": map[string]int{
+			"input_tokens":  0,
+			"output_tokens": 0,
+			"total_tokens":  0,
+		},
+	})
+}
+
+func (s *Server) runOpenAICompatJob(r *http.Request, model, prompt string) (string, string, error) {
+	tenant := tenantFromRequest(r, "")
+	p, code, msg := s.auth.authorize(r)
+	if code != http.StatusOK {
+		return "", "", errors.New(msg)
+	}
+	if s.auth.enabled && !p.canTenantAction(tenant, "submit") {
+		return "", "", errors.New("tenant action denied")
+	}
+	route := s.router.Route(models.RouteInput{
+		LatencyClass:       "interactive",
+		ReasoningRequired:  true,
+		DataClassification: "internal",
+		RequestedModel:     model,
+	})
+	if model == "" {
+		model = route.Model
+	}
+	jobID := fmt.Sprintf("job-%d", atomic.AddUint64(&s.seq, 1))
+	dag := s.planner.CompileWithMode(jobID, "chat", prompt, "template")
+	if err := s.engine.AddJob(
+		jobID,
+		tenant,
+		"chat",
+		prompt,
+		"enterprise-default",
+		"interactive",
+		"internal",
+		model,
+		"default",
+		dag,
+	); err != nil {
+		return "", "", err
+	}
+	deadline := time.Now().UTC().Add(s.timeout)
+	for time.Now().UTC().Before(deadline) {
+		job, ok, err := s.engine.GetJob(jobID)
+		if err != nil {
+			return "", "", err
+		}
+		if !ok {
+			return "", "", errors.New("job not found")
+		}
+		switch job.Status {
+		case scheduler.JobCompleted:
+			content := strings.TrimSpace(job.ResultArtifactURI)
+			if content == "" {
+				content = "completed"
+			}
+			return content, model, nil
+		case scheduler.JobFailed, scheduler.JobCanceled:
+			if job.Message != "" {
+				return "", "", errors.New(job.Message)
+			}
+			return "", "", errors.New("job failed")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return "", "", errors.New("openai compatibility timeout waiting for completion")
+}
+
+func buildChatPrompt(messages []openAIChatMessage) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, m := range messages {
+		role := strings.TrimSpace(m.Role)
+		if role == "" {
+			role = "user"
+		}
+		text := strings.TrimSpace(m.Content)
+		if text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(role)
+		b.WriteString(": ")
+		b.WriteString(text)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func buildResponsesPrompt(in any) string {
+	switch v := in.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			parts = append(parts, fmt.Sprint(item))
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n"))
+	default:
+		if in == nil {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprint(in))
+	}
+}
+
+func httpStatusForCompatErr(err error) int {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "timeout"):
+		return http.StatusGatewayTimeout
+	case strings.Contains(msg, "denied"):
+		return http.StatusForbidden
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +542,7 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
-	if _, ok := s.requireTenantAccess(w, r, job.Tenant); !ok {
+	if _, ok := s.requireTenantAction(w, r, job.Tenant, "read"); !ok {
 		return
 	}
 
@@ -186,9 +600,9 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 			page = page[:limit]
 		}
 
-		out := make([]daefapi.JobTaskStatus, 0, len(page))
+		out := make([]splaiapi.JobTaskStatus, 0, len(page))
 		for _, t := range page {
-			item := daefapi.JobTaskStatus{
+			item := splaiapi.JobTaskStatus{
 				TaskID:    t.TaskID,
 				Type:      t.Type,
 				Status:    t.Status,
@@ -205,7 +619,7 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 			}
 			out = append(out, item)
 		}
-		resp := daefapi.JobTasksResponse{
+		resp := splaiapi.JobTasksResponse{
 			JobID:    jobID,
 			Total:    total,
 			Returned: len(out),
@@ -225,7 +639,7 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, daefapi.JobStatusResponse{
+		writeJSON(w, http.StatusOK, splaiapi.JobStatusResponse{
 			JobID:             job.ID,
 			Status:            job.Status,
 			Message:           job.Message,
@@ -234,12 +648,15 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:         job.UpdatedAt.Format(http.TimeFormat),
 		})
 	case http.MethodDelete:
+		if _, ok := s.requireTenantAction(w, r, job.Tenant, "cancel"); !ok {
+			return
+		}
 		accepted, err := s.engine.CancelJob(jobID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, daefapi.CancelJobResponse{Accepted: accepted})
+		writeJSON(w, http.StatusOK, splaiapi.CancelJobResponse{Accepted: accepted})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
@@ -250,7 +667,7 @@ func (s *Server) handleRegisterWorker(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	var req daefapi.RegisterWorkerRequest
+	var req splaiapi.RegisterWorkerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -263,7 +680,7 @@ func (s *Server) handleRegisterWorker(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, daefapi.RegisterWorkerResponse{Accepted: true, HeartbeatIntervalSeconds: 5})
+	writeJSON(w, http.StatusOK, splaiapi.RegisterWorkerResponse{Accepted: true, HeartbeatIntervalSeconds: 5})
 }
 
 func (s *Server) handleWorkerSubresource(w http.ResponseWriter, r *http.Request) {
@@ -282,7 +699,7 @@ func (s *Server) handleWorkerSubresource(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		var req daefapi.HeartbeatRequest
+		var req splaiapi.HeartbeatRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
@@ -294,7 +711,7 @@ func (s *Server) handleWorkerSubresource(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, daefapi.HeartbeatResponse{Accepted: true})
+		writeJSON(w, http.StatusOK, splaiapi.HeartbeatResponse{Accepted: true})
 	case "assignments":
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -311,7 +728,7 @@ func (s *Server) handleWorkerSubresource(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, daefapi.PollAssignmentsResponse{Assignments: assignments})
+		writeJSON(w, http.StatusOK, splaiapi.PollAssignmentsResponse{Assignments: assignments})
 	default:
 		writeError(w, http.StatusNotFound, "worker subresource not found")
 	}
@@ -322,7 +739,7 @@ func (s *Server) handleTaskReport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	var req daefapi.ReportTaskResultRequest
+	var req splaiapi.ReportTaskResultRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -339,14 +756,14 @@ func (s *Server) handleTaskReport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
-	if _, ok := s.requireTenantAccess(w, r, job.Tenant); !ok {
+	if _, ok := s.requireTenantAction(w, r, job.Tenant, "report"); !ok {
 		return
 	}
 	if err := s.engine.ReportTaskResult(req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, daefapi.ReportTaskResultResponse{Accepted: true})
+	writeJSON(w, http.StatusOK, splaiapi.ReportTaskResultResponse{Accepted: true})
 }
 
 func (s *Server) handleDeadLetterQueue(w http.ResponseWriter, r *http.Request) {
@@ -378,13 +795,13 @@ func (s *Server) handleDeadLetterQueue(w http.ResponseWriter, r *http.Request) {
 			Result:     "ok",
 			Details:    fmt.Sprintf("returned=%d", len(refs)),
 		})
-		tasks := make([]daefapi.DeadLetterTask, 0, len(refs))
+		tasks := make([]splaiapi.DeadLetterTask, 0, len(refs))
 		for _, r := range refs {
-			tasks = append(tasks, daefapi.DeadLetterTask{JobID: r.JobID, TaskID: r.TaskID})
+			tasks = append(tasks, splaiapi.DeadLetterTask{JobID: r.JobID, TaskID: r.TaskID})
 		}
-		writeJSON(w, http.StatusOK, daefapi.ListDeadLettersResponse{Tasks: tasks})
+		writeJSON(w, http.StatusOK, splaiapi.ListDeadLettersResponse{Tasks: tasks})
 	case http.MethodPost:
-		var req daefapi.RequeueDeadLettersRequest
+		var req splaiapi.RequeueDeadLettersRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
@@ -398,7 +815,7 @@ func (s *Server) handleDeadLetterQueue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !req.DryRun && s.safety.confirmThreshold > 0 && len(req.Tasks) >= s.safety.confirmThreshold && s.safety.confirmToken != "" {
-			if strings.TrimSpace(r.Header.Get("X-DAEF-Confirm")) != s.safety.confirmToken {
+			if strings.TrimSpace(r.Header.Get("X-SPLAI-Confirm")) != s.safety.confirmToken {
 				writeError(w, http.StatusBadRequest, "confirmation token required for large requeue")
 				return
 			}
@@ -445,7 +862,7 @@ func (s *Server) handleDeadLetterQueue(w http.ResponseWriter, r *http.Request) {
 				Result:      "dry_run",
 				Details:     fmt.Sprintf("would_requeue=%d", count),
 			})
-			writeJSON(w, http.StatusOK, daefapi.RequeueDeadLettersResponse{DryRun: true, Requested: len(refs), Requeued: count})
+			writeJSON(w, http.StatusOK, splaiapi.RequeueDeadLettersResponse{DryRun: true, Requested: len(refs), Requeued: count})
 			return
 		}
 		n, err := s.engine.RequeueDeadLetters(refs)
@@ -476,7 +893,7 @@ func (s *Server) handleDeadLetterQueue(w http.ResponseWriter, r *http.Request) {
 			Details:     fmt.Sprintf("requeued=%d", n),
 		})
 		log.Printf("audit action=dead_letter_requeue principal=%s remote=%s requested=%d requeued=%d", p.id, r.RemoteAddr, len(refs), n)
-		writeJSON(w, http.StatusOK, daefapi.RequeueDeadLettersResponse{Requested: len(refs), Requeued: n})
+		writeJSON(w, http.StatusOK, splaiapi.RequeueDeadLettersResponse{Requested: len(refs), Requeued: n})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
@@ -536,9 +953,9 @@ func (s *Server) handleAuditEvents(w http.ResponseWriter, r *http.Request) {
 		writeAuditCSV(w, events)
 		return
 	}
-	out := make([]daefapi.AuditEvent, 0, len(events))
+	out := make([]splaiapi.AuditEvent, 0, len(events))
 	for _, e := range events {
-		out = append(out, daefapi.AuditEvent{
+		out = append(out, splaiapi.AuditEvent{
 			ID:          e.ID,
 			Action:      e.Action,
 			Actor:       e.Actor,
@@ -554,7 +971,7 @@ func (s *Server) handleAuditEvents(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:   e.CreatedAt.Format(http.TimeFormat),
 		})
 	}
-	writeJSON(w, http.StatusOK, daefapi.ListAuditEventsResponse{
+	writeJSON(w, http.StatusOK, splaiapi.ListAuditEventsResponse{
 		Returned: len(out),
 		Limit:    limit,
 		Offset:   offset,
@@ -587,7 +1004,23 @@ func (s *Server) requireTenantAccess(w http.ResponseWriter, r *http.Request, ten
 	return p, true
 }
 
-func hashDeadLetterTasks(tasks []daefapi.DeadLetterTask) string {
+func (s *Server) requireTenantAction(w http.ResponseWriter, r *http.Request, tenant, action string) (principal, bool) {
+	p, code, msg := s.auth.authorize(r)
+	if code != http.StatusOK {
+		writeError(w, code, msg)
+		return principal{}, false
+	}
+	if !s.auth.enabled {
+		return p, true
+	}
+	if !p.canTenantAction(tenant, action) {
+		writeError(w, http.StatusForbidden, "tenant action denied")
+		return principal{}, false
+	}
+	return p, true
+}
+
+func hashDeadLetterTasks(tasks []splaiapi.DeadLetterTask) string {
 	if len(tasks) == 0 {
 		return ""
 	}
@@ -602,7 +1035,7 @@ func hashDeadLetterTasks(tasks []daefapi.DeadLetterTask) string {
 func tenantFromRequest(r *http.Request, reqTenant string) string {
 	t := strings.TrimSpace(reqTenant)
 	if t == "" {
-		t = strings.TrimSpace(r.Header.Get("X-DAEF-Tenant"))
+		t = strings.TrimSpace(r.Header.Get("X-SPLAI-Tenant"))
 	}
 	if t == "" {
 		t = "default"
@@ -624,6 +1057,70 @@ func countMatchingRefs(requested []state.TaskRef, inDead []state.TaskRef) int {
 		}
 	}
 	return count
+}
+
+func injectModelInstallTasks(dag planner.DAG, model string, installIfMissing bool) planner.DAG {
+	model = strings.TrimSpace(model)
+	if !installIfMissing || model == "" || len(dag.Tasks) == 0 {
+		return dag
+	}
+	needsInstall := false
+	for _, t := range dag.Tasks {
+		if strings.EqualFold(strings.TrimSpace(t.Type), "llm_inference") {
+			needsInstall = true
+			break
+		}
+	}
+	if !needsInstall {
+		return dag
+	}
+	installTaskID := "t0-model-install"
+	existing := map[string]struct{}{}
+	for _, t := range dag.Tasks {
+		existing[t.TaskID] = struct{}{}
+	}
+	if _, ok := existing[installTaskID]; ok {
+		installTaskID = "t0-model-install-1"
+	}
+	dag.Tasks = append([]planner.Task{
+		{
+			TaskID:     installTaskID,
+			Type:       "model_download",
+			TimeoutSec: 1800,
+			MaxRetries: 1,
+			Inputs: map[string]string{
+				"model":           model,
+				"source":          "huggingface",
+				"only_if_missing": "true",
+			},
+		},
+	}, dag.Tasks...)
+	for i := range dag.Tasks {
+		if dag.Tasks[i].TaskID == installTaskID {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(dag.Tasks[i].Type), "llm_inference") {
+			continue
+		}
+		if dag.Tasks[i].Inputs == nil {
+			dag.Tasks[i].Inputs = map[string]string{}
+		}
+		dag.Tasks[i].Inputs["_install_model_if_missing"] = "true"
+		dag.Tasks[i].Inputs["model_source"] = "huggingface"
+		if !containsString(dag.Tasks[i].Dependencies, installTaskID) {
+			dag.Tasks[i].Dependencies = append(dag.Tasks[i].Dependencies, installTaskID)
+		}
+	}
+	return dag
+}
+
+func containsString(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) appendAudit(event state.AuditEventRecord) {
@@ -701,4 +1198,46 @@ func withLogging(next http.Handler) http.Handler {
 		log.Printf("%s %s", r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func withTracing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := observability.StartSpan(r.Context(), "http.request",
+			attribute.String("http.method", r.Method),
+			attribute.String("http.path", r.URL.Path),
+		)
+		defer span.End()
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		traceID := span.SpanContext().TraceID().String()
+		if traceID != "" {
+			sw.Header().Set("X-Trace-ID", traceID)
+		}
+		next.ServeHTTP(sw, r.WithContext(ctx))
+		span.SetAttributes(attribute.Int("http.status_code", sw.status))
+	})
+}
+
+func parseEnvBool(key string, fallback bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes":
+		return true
+	case "0", "false", "no":
+		return false
+	default:
+		return fallback
+	}
 }

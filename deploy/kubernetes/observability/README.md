@@ -1,20 +1,20 @@
 # Observability Manifests
 
-This directory holds Prometheus/Grafana observability assets for DAEF queue reliability.
+This directory holds Prometheus/Grafana observability assets for SPLAI queue reliability.
 
 ## Included files
 
 - `prometheus-scrape-config.yaml`: scrape config for `/v1/metrics/prometheus`
 - `prometheus-rules.yaml`: alert rules for dead-letter, retry storms, lease churn, assignment errors
-- `grafana-dashboard-daef-queue.json`: starter dashboard panels for reliability metrics
+- `grafana-dashboard-splai-queue.json`: starter dashboard panels for reliability metrics
 
 ## Prometheus scrape snippet
 
 `prometheus-scrape-config.yaml` adds:
 
-- `job_name: daef-gateway`
+- `job_name: splai-gateway`
 - `metrics_path: /v1/metrics/prometheus`
-- target `daef-api-gateway.default.svc.cluster.local:8080`
+- target `splai-api-gateway.default.svc.cluster.local:8080`
 
 ## Alert response
 

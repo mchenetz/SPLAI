@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splai-postgres
+  namespace: splai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splai-postgres
+  template:
+    metadata:
+      labels:
+        app: splai-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_DB
+              value: splai
+            - name: POSTGRES_USER
+              value: splai
+            - name: POSTGRES_PASSWORD
+              value: splai
+          ports:
+            - containerPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splai-postgres
+  namespace: splai-system
+spec:
+  selector:
+    app: splai-postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432

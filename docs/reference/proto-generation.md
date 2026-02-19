@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-- `proto/daef/v1/*.proto`
+- `proto/splai/v1/*.proto`
 
 ## Generation path
 
@@ -13,7 +13,7 @@
 
 ## Checked-in stubs
 
-- `gen/proto/daef/v1/stubs.pb.go`
+- `gen/proto/splai/v1/stubs.pb.go`
 
 These stubs provide compile-time Go message/service types in environments where external generation tools are unavailable.
 

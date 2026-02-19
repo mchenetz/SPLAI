@@ -8,16 +8,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/example/daef/internal/planner"
-	"github.com/example/daef/internal/scheduler"
-	"github.com/example/daef/pkg/daefapi"
+	"github.com/example/splai/internal/planner"
+	"github.com/example/splai/internal/scheduler"
+	"github.com/example/splai/pkg/splaiapi"
 )
 
 func TestJobTasksEndpointHandler(t *testing.T) {
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 
-	mustReqJSON(t, h, http.MethodPost, "/v1/workers/register", daefapi.RegisterWorkerRequest{
+	mustReqJSON(t, h, http.MethodPost, "/v1/workers/register", splaiapi.RegisterWorkerRequest{
 		WorkerID: "worker-inline-1",
 		CPU:      4,
 		Memory:   "8Gi",
@@ -26,8 +26,8 @@ func TestJobTasksEndpointHandler(t *testing.T) {
 		Tools:    []string{"bash"},
 	}, nil)
 
-	var submitResp daefapi.SubmitJobResponse
-	mustReqJSON(t, h, http.MethodPost, "/v1/jobs", daefapi.SubmitJobRequest{
+	var submitResp splaiapi.SubmitJobResponse
+	mustReqJSON(t, h, http.MethodPost, "/v1/jobs", splaiapi.SubmitJobRequest{
 		Type:     "chat",
 		Input:    "simple prompt",
 		Policy:   "enterprise-default",
@@ -37,14 +37,14 @@ func TestJobTasksEndpointHandler(t *testing.T) {
 		t.Fatalf("expected job id")
 	}
 
-	var assignments daefapi.PollAssignmentsResponse
+	var assignments splaiapi.PollAssignmentsResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/workers/worker-inline-1/assignments?max_tasks=1", nil, &assignments)
 	if len(assignments.Assignments) != 1 {
 		t.Fatalf("expected 1 assignment got %d", len(assignments.Assignments))
 	}
 	a := assignments.Assignments[0]
 
-	var tasksBefore daefapi.JobTasksResponse
+	var tasksBefore splaiapi.JobTasksResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/jobs/"+submitResp.JobID+"/tasks", nil, &tasksBefore)
 	if tasksBefore.Total != 1 || tasksBefore.Returned != 1 {
 		t.Fatalf("expected total/returned to be 1, got total=%d returned=%d", tasksBefore.Total, tasksBefore.Returned)
@@ -66,7 +66,7 @@ func TestJobTasksEndpointHandler(t *testing.T) {
 		t.Fatalf("expected lease fields to be populated, got %+v", before)
 	}
 
-	mustReqJSON(t, h, http.MethodPost, "/v1/tasks/report", daefapi.ReportTaskResultRequest{
+	mustReqJSON(t, h, http.MethodPost, "/v1/tasks/report", splaiapi.ReportTaskResultRequest{
 		WorkerID:          "worker-inline-1",
 		JobID:             a.JobID,
 		TaskID:            a.TaskID,
@@ -77,7 +77,7 @@ func TestJobTasksEndpointHandler(t *testing.T) {
 		DurationMillis:    2,
 	}, nil)
 
-	var tasksAfter daefapi.JobTasksResponse
+	var tasksAfter splaiapi.JobTasksResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/jobs/"+submitResp.JobID+"/tasks", nil, &tasksAfter)
 	if tasksAfter.Total != 1 || tasksAfter.Returned != 1 {
 		t.Fatalf("expected total/returned to be 1 after completion, got total=%d returned=%d", tasksAfter.Total, tasksAfter.Returned)
@@ -98,7 +98,7 @@ func TestJobTasksEndpointFilteringAndPagination(t *testing.T) {
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 
-	mustReqJSON(t, h, http.MethodPost, "/v1/workers/register", daefapi.RegisterWorkerRequest{
+	mustReqJSON(t, h, http.MethodPost, "/v1/workers/register", splaiapi.RegisterWorkerRequest{
 		WorkerID: "worker-inline-2",
 		CPU:      4,
 		Memory:   "8Gi",
@@ -107,27 +107,27 @@ func TestJobTasksEndpointFilteringAndPagination(t *testing.T) {
 		Tools:    []string{"bash"},
 	}, nil)
 
-	var submitResp daefapi.SubmitJobResponse
-	mustReqJSON(t, h, http.MethodPost, "/v1/jobs", daefapi.SubmitJobRequest{
+	var submitResp splaiapi.SubmitJobResponse
+	mustReqJSON(t, h, http.MethodPost, "/v1/jobs", splaiapi.SubmitJobRequest{
 		Type:     "chat",
 		Input:    "Analyze 500 support tickets and produce root causes.",
 		Policy:   "enterprise-default",
 		Priority: "interactive",
 	}, &submitResp)
 
-	var assignments daefapi.PollAssignmentsResponse
+	var assignments splaiapi.PollAssignmentsResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/workers/worker-inline-2/assignments?max_tasks=1", nil, &assignments)
 	if len(assignments.Assignments) != 1 {
 		t.Fatalf("expected one running assignment, got %d", len(assignments.Assignments))
 	}
 
-	var all daefapi.JobTasksResponse
+	var all splaiapi.JobTasksResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/jobs/"+submitResp.JobID+"/tasks", nil, &all)
 	if all.Total != 3 || all.Returned != 3 {
 		t.Fatalf("expected total/returned 3, got total=%d returned=%d", all.Total, all.Returned)
 	}
 
-	var queued daefapi.JobTasksResponse
+	var queued splaiapi.JobTasksResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/jobs/"+submitResp.JobID+"/tasks?status=Queued", nil, &queued)
 	if queued.Total != 2 || queued.Returned != 2 {
 		t.Fatalf("expected queued total/returned 2, got total=%d returned=%d", queued.Total, queued.Returned)
@@ -138,7 +138,7 @@ func TestJobTasksEndpointFilteringAndPagination(t *testing.T) {
 		}
 	}
 
-	var runningByWorker daefapi.JobTasksResponse
+	var runningByWorker splaiapi.JobTasksResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/jobs/"+submitResp.JobID+"/tasks?worker_id=worker-inline-2", nil, &runningByWorker)
 	if runningByWorker.Total != 1 || runningByWorker.Returned != 1 {
 		t.Fatalf("expected one task for worker filter, got total=%d returned=%d", runningByWorker.Total, runningByWorker.Returned)
@@ -147,7 +147,7 @@ func TestJobTasksEndpointFilteringAndPagination(t *testing.T) {
 		t.Fatalf("expected running task for worker filter, got %s", runningByWorker.Tasks[0].Status)
 	}
 
-	var paged daefapi.JobTasksResponse
+	var paged splaiapi.JobTasksResponse
 	mustReqJSON(t, h, http.MethodGet, "/v1/jobs/"+submitResp.JobID+"/tasks?limit=1&offset=1", nil, &paged)
 	if paged.Total != 3 || paged.Returned != 1 || paged.Limit != 1 || paged.Offset != 1 {
 		t.Fatalf("unexpected pagination response: %+v", paged)

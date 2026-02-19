@@ -25,7 +25,7 @@ This structure separates control-plane services, worker runtime, API contracts, 
   - `internal/executor/`: sandboxed task execution runtime.
   - `internal/runtime/`: task lifecycle state machine.
   - `internal/telemetry/`: worker-side traces/metrics emission.
-- `proto/daef/v1/`: gRPC/protobuf APIs for services and workers.
+- `proto/splai/v1/`: gRPC/protobuf APIs for services and workers.
 - `config/crd/bases/`: CRD definitions.
 - `deploy/kubernetes/`
   - `control-plane/`: API/scheduler/planner/operator manifests.

@@ -9,14 +9,19 @@ type Store interface {
 	CreateJobWithTasks(ctx context.Context, job JobRecord, tasks []TaskRecord) error
 	GetJob(ctx context.Context, jobID string) (JobRecord, bool, error)
 	UpdateJob(ctx context.Context, job JobRecord) error
+	CountJobsByTenantStatus(ctx context.Context, tenant, status string) (int, error)
 	ListTasksByJob(ctx context.Context, jobID string) ([]TaskRecord, error)
 	GetTask(ctx context.Context, jobID, taskID string) (TaskRecord, bool, error)
 	UpdateTask(ctx context.Context, task TaskRecord) error
+	CountTasksByTenantStatus(ctx context.Context, tenant, status string) (int, error)
 	ListExpiredLeasedTasks(ctx context.Context, now time.Time) ([]TaskRecord, error)
 	UpsertWorker(ctx context.Context, worker WorkerRecord) error
 	GetWorker(ctx context.Context, workerID string) (WorkerRecord, bool, error)
+	ListWorkers(ctx context.Context) ([]WorkerRecord, error)
 	UpdateWorkerHeartbeat(ctx context.Context, workerID string, queueDepth, runningTasks int, cpuUtil, memUtil float64, health string) error
 	ExtendWorkerLeases(ctx context.Context, workerID string, now time.Time, leaseDuration time.Duration) error
+	ListTasksByWorkerStatus(ctx context.Context, workerID, status string) ([]TaskRecord, error)
+	CountTasksByWorkerStatus(ctx context.Context, workerID, status string) (int, error)
 	AppendAuditEvent(ctx context.Context, event AuditEventRecord) error
 	ListAuditEvents(ctx context.Context, query AuditQuery) ([]AuditEventRecord, error)
 }

@@ -1,0 +1,40 @@
+{{- if .Values.minio.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "splai.fullname" . }}-minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "splai.fullname" . }}-minio
+  template:
+    metadata:
+      labels:
+        app: {{ include "splai.fullname" . }}-minio
+    spec:
+      containers:
+        - name: minio
+          image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          args: ["server", "/data"]
+          env:
+            - name: MINIO_ROOT_USER
+              value: {{ .Values.minio.rootUser | quote }}
+            - name: MINIO_ROOT_PASSWORD
+              value: {{ .Values.minio.rootPassword | quote }}
+          ports:
+            - containerPort: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "splai.fullname" . }}-minio
+spec:
+  selector:
+    app: {{ include "splai.fullname" . }}-minio
+  ports:
+    - name: minio
+      port: 9000
+      targetPort: 9000
+{{- end }}

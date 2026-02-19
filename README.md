@@ -1,120 +1,256 @@
-# Distributed AI Execution Fabric (DAEF)
+# SPLAI: Distributed AI Execution Fabric
 
-Build a distributed runtime that treats AI execution like Kubernetes treats containers.
+SPLAI is a distributed runtime for AI workloads.
+It turns requests into task graphs, schedules them across workers, and returns traceable results.
 
-## Included deliverables
+## What You Can Do With It
 
-- Kubernetes-native CRD model and manifests
-- Proto/gRPC contracts and generation wiring
-- Worker agent reference implementation
-- Founding-team repo layout
-- 60-day MVP roadmap
-- End-to-end MVP happy path (in-memory control plane + worker)
+- Run AI jobs across many CPU workers (GPU optional)
+- Keep execution on your own infrastructure (local, VM, Kubernetes, edge)
+- Route and govern model/tool execution with policy controls
+- Integrate with existing AI apps via native REST or OpenAI-compatible endpoints
 
-## Run happy path locally
+## Quick Start (5 Minutes, Local)
 
-Terminal 1:
+### 1. Start the control plane
 
 ```bash
 go run ./cmd/api-gateway
 ```
 
-Terminal 2:
+### 2. Start one worker
 
 ```bash
 go run ./worker/cmd/worker-agent
 ```
 
-Terminal 3:
+### 3. Submit a job
 
 ```bash
 curl -s -X POST http://localhost:8080/v1/jobs \
   -H 'content-type: application/json' \
-  -d '{"type":"chat","input":"Analyze 500 support tickets and produce root causes.","policy":"enterprise-default","priority":"interactive"}'
+  -d '{
+    "type":"chat",
+    "input":"Analyze 500 support tickets and produce root causes.",
+    "policy":"enterprise-default",
+    "priority":"interactive",
+    "model":"meta-llama/Llama-3-8B-Instruct",
+    "install_model_if_missing":true
+  }'
 ```
 
-Then poll status:
+### 4. Check status
 
 ```bash
 curl -s http://localhost:8080/v1/jobs/job-1
-```
-
-Task-level state:
-
-```bash
 curl -s http://localhost:8080/v1/jobs/job-1/tasks
 ```
 
-Filtered/paginated task view:
+## OpenAI-Compatible Mode (Drop-In for Existing Apps)
+
+Enable compatibility mode:
 
 ```bash
-curl -s 'http://localhost:8080/v1/jobs/job-1/tasks?status=Queued&limit=10&offset=0'
+SPLAI_OPENAI_COMPAT=true go run ./cmd/api-gateway
 ```
 
-## Run with persistent backends
+Supported endpoints:
 
-Start dependencies:
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+
+Current behavior:
+
+- Non-streaming only (`stream=true` is rejected)
+- Calls are translated to SPLAI jobs and waited synchronously
+- Timeout controlled by `SPLAI_OPENAI_COMPAT_TIMEOUT_SECONDS` (default `60`)
+
+### Python OpenAI SDK
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8080/v1",
+    api_key="local-dev-token",  # required by SDK; SPLAI ignores unless auth is enabled
+)
+
+resp = client.chat.completions.create(
+    model="llama3-8b-q4",
+    messages=[
+        {"role": "system", "content": "You are a support analyst."},
+        {"role": "user", "content": "Summarize root causes from these 500 tickets."},
+    ],
+)
+
+print(resp.choices[0].message.content)
+```
+
+### JavaScript OpenAI SDK
+
+```javascript
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "http://localhost:8080/v1",
+  apiKey: "local-dev-token",
+});
+
+const resp = await client.chat.completions.create({
+  model: "llama3-8b-q4",
+  messages: [{ role: "user", content: "Generate top 5 ticket themes." }],
+});
+
+console.log(resp.choices[0].message.content);
+```
+
+## Integrating With Popular AI Frameworks
+
+### LangChain
+
+Use OpenAI-compatible SPLAI endpoint as the model backend:
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="llama3-8b-q4",
+    base_url="http://localhost:8080/v1",
+    api_key="local-dev-token",
+)
+
+print(llm.invoke("Classify these support incidents by root cause."))
+```
+
+### LlamaIndex
+
+Point `OpenAI` LLM settings at SPLAI compatibility endpoint:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="llama3-8b-q4",
+    api_base="http://localhost:8080/v1",
+    api_key="local-dev-token",
+)
+
+print(llm.complete("Summarize this incident cluster."))
+```
+
+## Integrating With Pipeline/Orchestration Tools
+
+### Airflow Pattern
+
+Use an HTTP task (or PythonOperator) to submit and poll SPLAI jobs.
+
+```python
+import requests
+import time
+
+base = "http://localhost:8080"
+job = requests.post(f"{base}/v1/jobs", json={
+    "type": "chat",
+    "input": "Analyze daily support export and produce root causes",
+    "policy": "enterprise-default",
+    "priority": "batch",
+}).json()
+
+job_id = job["job_id"]
+while True:
+    status = requests.get(f"{base}/v1/jobs/{job_id}").json()
+    if status["status"] in ["Completed", "Failed", "Canceled"]:
+        print(status)
+        break
+    time.sleep(2)
+```
+
+### n8n / Zapier / Make Pattern
+
+- Node 1: HTTP `POST /v1/jobs`
+- Node 2: Wait/Delay
+- Node 3: HTTP `GET /v1/jobs/{id}`
+- Node 4: Branch on status (`Completed`/`Failed`)
+
+This pattern gives async reliability with retries and queueing from SPLAI.
+
+## Kubernetes Install (Helm)
 
 ```bash
-make infra-up
+helm install splai ./charts/splai -n splai-system --create-namespace
 ```
 
-Run gateway with Postgres + Redis:
+Then access gateway locally:
 
 ```bash
-DAEF_STORE=postgres \
-DAEF_POSTGRES_DSN='postgres://daef:daef@127.0.0.1:5432/daef?sslmode=disable' \
-DAEF_QUEUE=redis \
-DAEF_REDIS_ADDR=127.0.0.1:6379 \
-DAEF_LEASE_SECONDS=15 \
-DAEF_REDIS_DEADLETTER_MAX=5 \
-go run ./cmd/api-gateway
+kubectl -n splai-system port-forward svc/splai-splai-api-gateway 8080:8080
 ```
 
-Migrations in `db/migrations/*.sql` are applied automatically at startup.
+## Worker Onboarding (Single Command)
 
-Dead-letter admin endpoints:
+Build/install helper binaries:
 
-- `GET /v1/admin/queue/dead-letter?limit=50`
-- `POST /v1/admin/queue/dead-letter` with explicit tasks to requeue
-- `GET /v1/admin/audit?limit=50&offset=0`
-- `GET /v1/admin/audit?action=dead_letter_requeue&result=ok&tenant=default&from=2026-02-18T00:00:00Z&to=2026-02-19T00:00:00Z`
-- `GET /v1/admin/audit?format=csv&limit=500`
+```bash
+make install-worker
+```
 
-Metrics endpoint:
+Join a host as worker:
 
-- `GET /v1/metrics`
-- `GET /v1/metrics/prometheus`
+```bash
+splaictl worker join --url http://<gateway>:8080 --service systemd
+```
 
-Sensitive endpoint auth (optional):
+Verify:
 
-- Set `DAEF_API_TOKENS` to enable token auth for metrics/admin endpoints.
-- Format: comma-separated `token:scope1|scope2`.
-- Scopes:
-  - `metrics` for `/v1/metrics*`
-  - `operator` for `/v1/admin/queue/dead-letter*` and `/v1/admin/audit*`
-  - `tenant:<tenant-id>` for tenant-scoped job submit/status/report access
-- Example:
-  - `DAEF_API_TOKENS='operator-token:operator|metrics,tenant-a-token:tenant:tenant-a,metrics-token:metrics'`
+```bash
+splaictl verify --url http://<gateway>:8080
+```
 
-Admin safety controls (optional):
+Generate a token for controlled environments:
 
-- `DAEF_ADMIN_REQUEUE_MAX_BATCH` (default `100`)
-- `DAEF_ADMIN_REQUEUE_RATE_LIMIT_PER_MIN` (default `30`)
-- `DAEF_ADMIN_REQUEUE_CONFIRM_THRESHOLD` (default `20`)
-- `DAEF_ADMIN_REQUEUE_CONFIRM_TOKEN` (required to enforce confirm-header checks)
+```bash
+splaictl worker token create
+```
 
-Requeue dry-run support:
+## Centralized Hugging Face Model Prefetch
 
-- `POST /v1/admin/queue/dead-letter` accepts `{"tasks":[...],"dry_run":true}` to preview requeue count without mutating queue state.
+Trigger model download on workers from one API call:
 
-## Key paths
+```bash
+curl -s -X POST http://localhost:8080/v1/admin/models/prefetch \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model":"meta-llama/Llama-3-8B-Instruct",
+    "source":"huggingface",
+    "workers":["worker-a","worker-b"],
+    "only_missing":true
+  }'
+```
 
-- Architecture: `docs/architecture/kubernetes-crd-native.md`
-- CRDs: `config/crd/bases/`
-- Proto contracts: `proto/daef/v1/`
-- Proto generation: `docs/reference/proto-generation.md`
-- Persistent mode: `docs/reference/persistent-control-plane.md`
-- Checked-in stubs: `gen/proto/daef/v1/stubs.pb.go`
+## Security and Auth
+
+Enable token auth by setting `SPLAI_API_TOKENS`.
+When enabled, send bearer tokens in `Authorization: Bearer <token>` (or `X-SPLAI-Token`).
+
+Example:
+
+```bash
+SPLAI_API_TOKENS='operator-token:operator|metrics,tenant-a-token:tenant:tenant-a'
+```
+
+## Storage, Queue, and Observability
+
+- Persistent state: Postgres (`SPLAI_STORE=postgres`, `SPLAI_POSTGRES_DSN=...`)
+- Distributed queue: Redis (`SPLAI_QUEUE=redis`, `SPLAI_REDIS_ADDR=...`)
+- Tracing/metrics: OpenTelemetry + Prometheus endpoints
+
+## Key Paths
+
+- Helm chart: `charts/splai/`
+- CLI: `cmd/splaictl/`
 - Worker runtime: `worker/`
-- Roadmap: `docs/roadmaps/60-day-mvp.md`
+- OpenAPI: `openapi/splai-admin-task.yaml`
+- Proto: `proto/splai/v1/`
+- Architecture: `docs/architecture/kubernetes-crd-native.md`
+- Persistent mode: `docs/reference/persistent-control-plane.md`
+- Complete reference: `docs/reference/complete-operations-reference.md`

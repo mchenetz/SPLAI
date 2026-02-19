@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splai-redis
+  namespace: splai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splai-redis
+  template:
+    metadata:
+      labels:
+        app: splai-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          ports:
+            - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splai-redis
+  namespace: splai-system
+spec:
+  selector:
+    app: splai-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379

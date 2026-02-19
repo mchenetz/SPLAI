@@ -4,7 +4,7 @@
 
 - Verify backward compatibility for `/v1/jobs/{id}/tasks` response fields.
 - Confirm admin endpoint auth rules (`operator`, `metrics`, tenant scopes).
-- Validate OpenAPI file at `openapi/daef-admin-task.yaml` reflects implementation.
+- Validate OpenAPI file at `openapi/splai-admin-task.yaml` reflects implementation.
 
 ## Data and migrations
 
@@ -25,7 +25,7 @@
 ## Observability and operations
 
 - Deploy Prometheus scrape config and alert rules.
-- Import dashboard `deploy/kubernetes/observability/grafana-dashboard-daef-queue.json`.
+- Import dashboard `deploy/kubernetes/observability/grafana-dashboard-splai-queue.json`.
 - Confirm alerts and runbook links are active.
 
 ## Staging soak and fault injection

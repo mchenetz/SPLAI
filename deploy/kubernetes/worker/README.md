@@ -1,10 +1,14 @@
 # Worker Manifests
 
-This directory holds a DaemonSet manifest for the DAEF worker agent.
+This directory holds a runnable DaemonSet manifest for the SPLAI worker agent.
 
-Expected configuration:
+Included files:
 
-- worker identity and locality labels from node metadata
-- CPU-first default runtime
-- heartbeat interval 5s
-- optional tolerations for edge pools
+- `daemonset.yaml`
+- `kustomization.yaml`
+
+Apply with:
+
+```bash
+kubectl apply -k deploy/kubernetes/worker
+```

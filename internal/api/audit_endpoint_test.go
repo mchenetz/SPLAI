@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/daef/internal/planner"
-	"github.com/example/daef/internal/scheduler"
-	"github.com/example/daef/pkg/daefapi"
+	"github.com/example/splai/internal/planner"
+	"github.com/example/splai/internal/scheduler"
+	"github.com/example/splai/pkg/splaiapi"
 )
 
 func TestAuditEndpointFiltersAndCSV(t *testing.T) {
-	t.Setenv("DAEF_API_TOKENS", "operator-token:operator|metrics")
+	t.Setenv("SPLAI_API_TOKENS", "operator-token:operator|metrics")
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 
@@ -22,7 +22,7 @@ func TestAuditEndpointFiltersAndCSV(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for dry-run requeue, got %d body=%s", w.Code, w.Body.String())
 	}
-	var rr daefapi.RequeueDeadLettersResponse
+	var rr splaiapi.RequeueDeadLettersResponse
 	if err := json.NewDecoder(w.Body).Decode(&rr); err != nil {
 		t.Fatalf("decode requeue response: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestAuditEndpointFiltersAndCSV(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for filtered audit, got %d body=%s", w.Code, w.Body.String())
 	}
-	var audits daefapi.ListAuditEventsResponse
+	var audits splaiapi.ListAuditEventsResponse
 	if err := json.NewDecoder(w.Body).Decode(&audits); err != nil {
 		t.Fatalf("decode audit response: %v", err)
 	}
@@ -68,11 +68,11 @@ func TestAuditEndpointFiltersAndCSV(t *testing.T) {
 }
 
 func TestDeadLetterRequeueSafetyControls(t *testing.T) {
-	t.Setenv("DAEF_API_TOKENS", "operator-token:operator")
-	t.Setenv("DAEF_ADMIN_REQUEUE_MAX_BATCH", "1")
-	t.Setenv("DAEF_ADMIN_REQUEUE_RATE_LIMIT_PER_MIN", "1")
-	t.Setenv("DAEF_ADMIN_REQUEUE_CONFIRM_THRESHOLD", "1")
-	t.Setenv("DAEF_ADMIN_REQUEUE_CONFIRM_TOKEN", "confirm-me")
+	t.Setenv("SPLAI_API_TOKENS", "operator-token:operator")
+	t.Setenv("SPLAI_ADMIN_REQUEUE_MAX_BATCH", "1")
+	t.Setenv("SPLAI_ADMIN_REQUEUE_RATE_LIMIT_PER_MIN", "1")
+	t.Setenv("SPLAI_ADMIN_REQUEUE_CONFIRM_THRESHOLD", "1")
+	t.Setenv("SPLAI_ADMIN_REQUEUE_CONFIRM_TOKEN", "confirm-me")
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 
@@ -87,7 +87,7 @@ func TestDeadLetterRequeueSafetyControls(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/admin/queue/dead-letter", strings.NewReader(string(body)))
 	req.Header.Set("Authorization", "Bearer operator-token")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-DAEF-Confirm", "confirm-me")
+	req.Header.Set("X-SPLAI-Confirm", "confirm-me")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -98,7 +98,7 @@ func TestDeadLetterRequeueSafetyControls(t *testing.T) {
 	req = httptest.NewRequest(http.MethodPost, "/v1/admin/queue/dead-letter", strings.NewReader(string(body)))
 	req.Header.Set("Authorization", "Bearer operator-token")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-DAEF-Confirm", "confirm-me")
+	req.Header.Set("X-SPLAI-Confirm", "confirm-me")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusTooManyRequests {
@@ -110,7 +110,7 @@ func TestDeadLetterRequeueSafetyControls(t *testing.T) {
 	req = httptest.NewRequest(http.MethodPost, "/v1/admin/queue/dead-letter", strings.NewReader(string(largeBody)))
 	req.Header.Set("Authorization", "Bearer operator-token")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-DAEF-Confirm", "confirm-me")
+	req.Header.Set("X-SPLAI-Confirm", "confirm-me")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {

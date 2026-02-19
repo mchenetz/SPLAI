@@ -11,12 +11,12 @@ Phase-1 only: DAG execution, worker registration, CPU distributed inference, bas
 - Implement proto package and code generation workflow.
 
 Exit criteria:
-- End-to-end "submit job" persists `DAEFJob` and returns `job_id`.
+- End-to-end "submit job" persists `SPLAIJob` and returns `job_id`.
 
 ## Day 8-14: Planner + DAG persistence
 
 - Implement template planner and hybrid planner interface.
-- Add DAG representation to `DAEFJob.spec` and task status fields.
+- Add DAG representation to `SPLAIJob.spec` and task status fields.
 - Add job lifecycle transitions and validation.
 
 Exit criteria:

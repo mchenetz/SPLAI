@@ -1,0 +1,8 @@
+SPLAI scheduler benchmark run at 2026-02-19T15:36:55Z
+command: go test ./internal/scheduler -run Benchmark -bench . -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/example/splai/internal/scheduler
+BenchmarkAssignmentPath-12    	   10000	    537283 ns/op	   17474 B/op	      93 allocs/op
+PASS
+ok  	github.com/example/splai/internal/scheduler	5.568s

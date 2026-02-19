@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/daef/db/migrations"
+	"github.com/example/splai/db/migrations"
 )
 
 type PostgresStore struct {
@@ -191,6 +191,12 @@ func (p *PostgresStore) UpdateJob(ctx context.Context, job JobRecord) error {
 	return nil
 }
 
+func (p *PostgresStore) CountJobsByTenantStatus(ctx context.Context, tenant, status string) (int, error) {
+	var n int
+	err := p.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM jobs WHERE tenant=$1 AND status=$2`, tenant, status).Scan(&n)
+	return n, err
+}
+
 func (p *PostgresStore) ListTasksByJob(ctx context.Context, jobID string) ([]TaskRecord, error) {
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT job_id, task_id, type, inputs_json, dependencies_json, status, worker_id, lease_id, lease_expires_at, attempt, max_retries, timeout_sec, output_uri, error_text, last_report_key, created_at, updated_at
@@ -253,6 +259,18 @@ func (p *PostgresStore) UpdateTask(ctx context.Context, task TaskRecord) error {
 		return fmt.Errorf("task %s/%s not found", task.JobID, task.TaskID)
 	}
 	return nil
+}
+
+func (p *PostgresStore) CountTasksByTenantStatus(ctx context.Context, tenant, status string) (int, error) {
+	var n int
+	err := p.db.QueryRowContext(ctx,
+		`SELECT COUNT(1)
+		 FROM tasks t
+		 JOIN jobs j ON j.id = t.job_id
+		 WHERE j.tenant=$1 AND t.status=$2`,
+		tenant, status,
+	).Scan(&n)
+	return n, err
 }
 
 func (p *PostgresStore) ListExpiredLeasedTasks(ctx context.Context, now time.Time) ([]TaskRecord, error) {
@@ -330,6 +348,33 @@ func (p *PostgresStore) GetWorker(ctx context.Context, workerID string) (WorkerR
 	return w, true, nil
 }
 
+func (p *PostgresStore) ListWorkers(ctx context.Context) ([]WorkerRecord, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT id, cpu, memory, gpu, models_json, tools_json, locality, health, queue_depth, running_tasks, cpu_util, memory_util, last_heartbeat
+		 FROM workers`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]WorkerRecord, 0, 64)
+	for rows.Next() {
+		var w WorkerRecord
+		var modelsJSON, toolsJSON string
+		if err := rows.Scan(&w.ID, &w.CPU, &w.Memory, &w.GPU, &modelsJSON, &toolsJSON, &w.Locality, &w.Health, &w.QueueDepth, &w.RunningTasks, &w.CPUUtil, &w.MemoryUtil, &w.LastHeartbeat); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(modelsJSON), &w.Models); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(toolsJSON), &w.Tools); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
 func (p *PostgresStore) UpdateWorkerHeartbeat(ctx context.Context, workerID string, queueDepth, runningTasks int, cpuUtil, memUtil float64, health string) error {
 	if health == "" {
 		health = "healthy"
@@ -358,6 +403,36 @@ func (p *PostgresStore) ExtendWorkerLeases(ctx context.Context, workerID string,
 		workerID, now, now.Add(leaseDuration), now,
 	)
 	return err
+}
+
+func (p *PostgresStore) ListTasksByWorkerStatus(ctx context.Context, workerID, status string) ([]TaskRecord, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT job_id, task_id, type, inputs_json, dependencies_json, status, worker_id, lease_id, lease_expires_at, attempt, max_retries, timeout_sec, output_uri, error_text, last_report_key, created_at, updated_at
+		 FROM tasks
+		 WHERE worker_id=$1 AND status=$2`, workerID, status,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TaskRecord, 0, 32)
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (p *PostgresStore) CountTasksByWorkerStatus(ctx context.Context, workerID, status string) (int, error) {
+	var n int
+	err := p.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM tasks WHERE worker_id=$1 AND status=$2`,
+		workerID, status,
+	).Scan(&n)
+	return n, err
 }
 
 func (p *PostgresStore) AppendAuditEvent(ctx context.Context, event AuditEventRecord) error {

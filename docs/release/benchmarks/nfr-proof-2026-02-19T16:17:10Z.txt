@@ -1,0 +1,9 @@
+SPLAI NFR proof at 2026-02-19T16:17:10Z
+workers=10000 jobs=10000 target_util=0.70
+=== RUN   TestNFRUtilizationProof
+    nfr_proof_test.go:58: workers=10000 jobs=10000 assigned_workers=6257 utilization=0.6257 target=0.7000
+    nfr_proof_test.go:60: utilization 0.6257 is below target 0.7000
+--- FAIL: TestNFRUtilizationProof (13.57s)
+FAIL
+FAIL	github.com/example/splai/internal/scheduler	13.876s
+FAIL

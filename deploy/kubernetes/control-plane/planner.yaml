@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splai-planner
+  namespace: splai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splai-planner
+  template:
+    metadata:
+      labels:
+        app: splai-planner
+    spec:
+      containers:
+        - name: planner
+          image: ghcr.io/example/splai-planner:v0.1.0
+          args: []

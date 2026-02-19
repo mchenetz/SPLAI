@@ -1,0 +1,48 @@
+SPLAI NFR proof at 2026-02-19T16:11:38Z
+workers=10000 jobs=10000 target_util=0.70
+=== RUN   TestNFRUtilizationProof
+panic: test timed out after 10m0s
+running tests:
+	TestNFRUtilizationProof (10m0s)
+
+goroutine 50 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/local/go/src/testing/testing.go:2366 +0x30c
+created by time.goFunc
+	/usr/local/go/src/time/sleep.go:177 +0x38
+
+goroutine 1 [chan receive, 10 minutes]:
+testing.(*T).Run(0x14000118680, {0x10497c05c?, 0x14000027b38?}, 0x104aa6030)
+	/usr/local/go/src/testing/testing.go:1750 +0x32c
+testing.runTests.func1(0x14000118680)
+	/usr/local/go/src/testing/testing.go:2161 +0x40
+testing.tRunner(0x14000118680, 0x14000027c58)
+	/usr/local/go/src/testing/testing.go:1689 +0xec
+testing.runTests(0x1400000e198, {0x104c93cc0, 0x5, 0x5}, {0x14000027d18?, 0x1047bdf20?, 0x104c9a920?})
+	/usr/local/go/src/testing/testing.go:2159 +0x3b0
+testing.(*M).Run(0x14000114d20)
+	/usr/local/go/src/testing/testing.go:2027 +0x5a4
+main.main()
+	_testmain.go:57 +0x16c
+
+goroutine 6 [runnable]:
+time.Time.Sub({0xc25dec04e0c81318, 0x8bb2ec5f33, 0x104c9a920}, {0x20b5bbc8, 0xee1292d3b, 0x0})
+	/usr/local/go/src/time/time.go:900 +0x178
+time.Since({0x0?, 0x14000940db0?, 0x0?})
+	/usr/local/go/src/time/time.go:934 +0x90
+github.com/example/splai/internal/scheduler.(*Engine).computeWorkerScore(_, {{0x1400090b108, 0x8}, {0x1049743d7, 0x2}, {0x104977949, 0xd}, 0x14000940db0, {0x0, 0x0, ...}, ...}, ...)
+	/Users/mchenetz/git/DAIEF/internal/scheduler/engine.go:569 +0x2f4
+github.com/example/splai/internal/scheduler.(*Engine).bestWorkerForTask(_, {_, _}, {{0x1400090b108, 0x8}, {0x104975ac3, 0x8}, {0x10497490c, 0x4}, {0x104979173, ...}, ...}, ...)
+	/Users/mchenetz/git/DAIEF/internal/scheduler/engine.go:529 +0x1e8
+github.com/example/splai/internal/scheduler.(*Engine).tryAssign(0x14000146300, {0x104aab010, 0x1400100fb60}, {0x14001361ae0, 0x6}, {{0x1400090b108?, 0x8?}, {0x1049743d7?, 0x1?}})
+	/Users/mchenetz/git/DAIEF/internal/scheduler/engine.go:422 +0x2f4
+github.com/example/splai/internal/scheduler.(*Engine).PollAssignments(0x14000146300, {0x14001361ae0, 0x6}, 0x1)
+	/Users/mchenetz/git/DAIEF/internal/scheduler/engine.go:374 +0x860
+github.com/example/splai/internal/scheduler.TestNFRUtilizationProof(0x14000118820)
+	/Users/mchenetz/git/DAIEF/internal/scheduler/nfr_proof_test.go:46 +0x654
+testing.tRunner(0x14000118820, 0x104aa6030)
+	/usr/local/go/src/testing/testing.go:1689 +0xec
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1742 +0x318
+FAIL	github.com/example/splai/internal/scheduler	600.290s
+FAIL

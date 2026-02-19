@@ -1,0 +1,6 @@
+apiVersion: v2
+name: splai
+description: SPLAI distributed AI execution fabric
+version: 0.1.0
+appVersion: "0.1.0"
+type: application

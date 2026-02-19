@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/example/daef/api/v1alpha1"
+	"github.com/example/splai/api/v1alpha1"
 )
 
 type JobReconciler struct{}
@@ -14,7 +14,7 @@ func NewJobReconciler() *JobReconciler {
 	return &JobReconciler{}
 }
 
-func (r *JobReconciler) Reconcile(_ context.Context, job *v1alpha1.DAEFJob) {
+func (r *JobReconciler) Reconcile(_ context.Context, job *v1alpha1.SPLAIJob) {
 	if job == nil {
 		return
 	}

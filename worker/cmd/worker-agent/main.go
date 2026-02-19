@@ -6,12 +6,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/example/daef/worker/internal/config"
-	"github.com/example/daef/worker/internal/executor"
-	"github.com/example/daef/worker/internal/heartbeat"
-	"github.com/example/daef/worker/internal/registration"
-	"github.com/example/daef/worker/internal/runtime"
-	"github.com/example/daef/worker/internal/telemetry"
+	"github.com/example/splai/worker/internal/config"
+	"github.com/example/splai/worker/internal/executor"
+	"github.com/example/splai/worker/internal/heartbeat"
+	"github.com/example/splai/worker/internal/registration"
+	"github.com/example/splai/worker/internal/runtime"
+	"github.com/example/splai/worker/internal/telemetry"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 		log.Fatalf("register worker: %v", err)
 	}
 
-	hb := heartbeat.New(cfg.ControlPlaneBaseURL, cfg.WorkerID, cfg.HeartbeatInterval)
+	hb := heartbeat.New(cfg.ControlPlaneBaseURL, cfg.WorkerID, cfg.APIToken, cfg.HeartbeatInterval)
 	exec := executor.New(cfg)
 	rt := runtime.New(cfg, exec, hb, t)
 

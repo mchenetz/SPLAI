@@ -10,12 +10,12 @@ import (
 )
 
 func TestRedisQueueIntegrationConcurrentClaims(t *testing.T) {
-	addr := os.Getenv("DAEF_REDIS_ADDR_INTEGRATION")
+	addr := os.Getenv("SPLAI_REDIS_ADDR_INTEGRATION")
 	if addr == "" {
-		t.Skip("set DAEF_REDIS_ADDR_INTEGRATION to run Redis integration tests")
+		t.Skip("set SPLAI_REDIS_ADDR_INTEGRATION to run Redis integration tests")
 	}
 	ctx := context.Background()
-	q := NewRedisQueue(RedisQueueConfig{Addr: addr, Key: "daef:test:integration:" + strconv.FormatInt(time.Now().UnixNano(), 10), Timeout: 2 * time.Second, DeadLetterMax: 3})
+	q := NewRedisQueue(RedisQueueConfig{Addr: addr, Key: "splai:test:integration:" + strconv.FormatInt(time.Now().UnixNano(), 10), Timeout: 2 * time.Second, DeadLetterMax: 3})
 
 	// Seed tasks.
 	for i := 0; i < 30; i++ {

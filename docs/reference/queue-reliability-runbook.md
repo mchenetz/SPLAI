@@ -4,10 +4,10 @@
 
 Use this runbook when queue reliability alerts fire:
 
-- `DAEFDeadLetterNonZero`
-- `DAEFQueueRetryStorm`
-- `DAEFSchedulerAssignmentErrors`
-- `DAEFExpiredLeaseChurn`
+- `SPLAIDeadLetterNonZero`
+- `SPLAIQueueRetryStorm`
+- `SPLAISchedulerAssignmentErrors`
+- `SPLAIExpiredLeaseChurn`
 
 ## Immediate checks
 
@@ -24,7 +24,7 @@ curl -s http://<gateway>/v1/admin/queue/dead-letter?limit=100
 ```
 
 3. Check worker heartbeat freshness and running task skew:
-- Compare worker heartbeat cadence against `DAEF_LEASE_SECONDS`
+- Compare worker heartbeat cadence against `SPLAI_LEASE_SECONDS`
 - Look for stale workers holding many running tasks
 
 ## Remediation
@@ -32,7 +32,7 @@ curl -s http://<gateway>/v1/admin/queue/dead-letter?limit=100
 1. Retry storm (`queue_nacked_total{reason="error"}` high)
 - Verify queue backend health (Redis/Postgres reachability).
 - Verify worker process and tool dependencies.
-- Increase `DAEF_LEASE_SECONDS` if workers are frequently timing out due to long tasks.
+- Increase `SPLAI_LEASE_SECONDS` if workers are frequently timing out due to long tasks.
 
 2. Expired lease churn high
 - Confirm workers can send heartbeat every 5s.

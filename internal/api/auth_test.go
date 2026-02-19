@@ -7,13 +7,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/example/daef/internal/planner"
-	"github.com/example/daef/internal/scheduler"
-	"github.com/example/daef/pkg/daefapi"
+	"github.com/example/splai/internal/planner"
+	"github.com/example/splai/internal/scheduler"
+	"github.com/example/splai/pkg/splaiapi"
 )
 
 func TestAuthScopesForSensitiveEndpoints(t *testing.T) {
-	t.Setenv("DAEF_API_TOKENS", "operator-token:operator|metrics,metrics-token:metrics,tenant-a-token:tenant:tenant-a")
+	t.Setenv("SPLAI_API_TOKENS", "operator-token:operator|metrics,metrics-token:metrics,tenant-a-token:tenant:tenant-a")
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 
@@ -47,7 +47,7 @@ func TestAuthScopesForSensitiveEndpoints(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for operator audit list request, got %d body=%s", w.Code, w.Body.String())
 	}
-	var audits daefapi.ListAuditEventsResponse
+	var audits splaiapi.ListAuditEventsResponse
 	if err := json.NewDecoder(w.Body).Decode(&audits); err != nil {
 		t.Fatalf("decode audit response: %v", err)
 	}
@@ -70,6 +70,44 @@ func TestAuthScopesForSensitiveEndpoints(t *testing.T) {
 	w = reqWithToken(t, h, http.MethodPost, "/v1/jobs", "tenant-a-token", jobBody)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected tenant token forbidden for tenant-b job, got %d", w.Code)
+	}
+}
+
+func TestAuthRolesExpandScopes(t *testing.T) {
+	t.Setenv("SPLAI_API_TOKENS", "rbac-token:tenant:tenant-a")
+	t.Setenv("SPLAI_API_ROLES", "ops=operator|metrics")
+	t.Setenv("SPLAI_API_TOKEN_ROLES", "rbac-token=ops")
+	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
+	h := srv.Handler()
+
+	w := reqWithToken(t, h, http.MethodGet, "/v1/metrics", "rbac-token", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected role-expanded metrics access, got %d", w.Code)
+	}
+	w = reqWithToken(t, h, http.MethodGet, "/v1/admin/audit", "rbac-token", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected role-expanded operator access, got %d", w.Code)
+	}
+}
+
+func TestTenantReaderRunnerRoles(t *testing.T) {
+	t.Setenv("SPLAI_API_TOKENS", "runner-token:tenant:tenant-a,reader-token:tenant:tenant-a")
+	t.Setenv("SPLAI_API_TOKEN_ROLES", "runner-token=tenant-runner,reader-token=tenant-reader")
+	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
+	h := srv.Handler()
+
+	jobBody := []byte(`{"type":"chat","input":"hello","policy":"enterprise-default","priority":"interactive","tenant":"tenant-a"}`)
+	w := reqWithToken(t, h, http.MethodPost, "/v1/jobs", "runner-token", jobBody)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("runner should submit job, got %d body=%s", w.Code, w.Body.String())
+	}
+	w = reqWithToken(t, h, http.MethodPost, "/v1/jobs", "reader-token", jobBody)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("reader should not submit job, got %d", w.Code)
+	}
+	w = reqWithToken(t, h, http.MethodGet, "/v1/jobs/job-1", "reader-token", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("reader should read job status, got %d", w.Code)
 	}
 }
 

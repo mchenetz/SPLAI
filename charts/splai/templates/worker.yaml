@@ -1,0 +1,46 @@
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "splai.fullname" . }}-worker
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "splai.fullname" . }}-worker
+  template:
+    metadata:
+      labels:
+        app: {{ include "splai.fullname" . }}-worker
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          env:
+            - name: SPLAI_CONTROL_PLANE_URL
+              value: http://{{ include "splai.fullname" . }}-api-gateway:{{ .Values.apiGateway.service.port }}
+            - name: SPLAI_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SPLAI_ARTIFACT_ROOT
+              value: {{ .Values.worker.artifactRoot | quote }}
+            - name: SPLAI_MAX_PARALLEL_TASKS
+              value: {{ .Values.worker.maxParallelTasks | quote }}
+            - name: SPLAI_HEARTBEAT_SECONDS
+              value: {{ .Values.worker.heartbeatSeconds | quote }}
+            - name: SPLAI_POLL_MILLIS
+              value: {{ .Values.worker.pollMillis | quote }}
+          volumeMounts:
+            - name: artifact-dir
+              mountPath: {{ .Values.worker.artifactRoot | quote }}
+      volumes:
+        - name: artifact-dir
+          hostPath:
+            path: {{ .Values.worker.artifactRoot | quote }}
+            type: DirectoryOrCreate
+{{- end }}

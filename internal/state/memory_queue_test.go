@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/daef/internal/observability"
+	"github.com/example/splai/internal/observability"
 )
 
 func TestMemoryQueueClaimAckNackAndRequeueExpired(t *testing.T) {

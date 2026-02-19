@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/daef/internal/planner"
-	"github.com/example/daef/internal/scheduler"
-	"github.com/example/daef/pkg/daefapi"
+	"github.com/example/splai/internal/planner"
+	"github.com/example/splai/internal/scheduler"
+	"github.com/example/splai/pkg/splaiapi"
 )
 
 func TestEndToEndJobLifecycle(t *testing.T) {
@@ -19,7 +19,7 @@ func TestEndToEndJobLifecycle(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	register := daefapi.RegisterWorkerRequest{
+	register := splaiapi.RegisterWorkerRequest{
 		WorkerID: "worker-test-1",
 		CPU:      8,
 		Memory:   "16Gi",
@@ -29,13 +29,13 @@ func TestEndToEndJobLifecycle(t *testing.T) {
 	}
 	doJSON(t, http.MethodPost, ts.URL+"/v1/workers/register", register, nil)
 
-	submit := daefapi.SubmitJobRequest{
+	submit := splaiapi.SubmitJobRequest{
 		Type:     "chat",
 		Input:    "Analyze 500 support tickets and produce root causes.",
 		Policy:   "enterprise-default",
 		Priority: "interactive",
 	}
-	var submitResp daefapi.SubmitJobResponse
+	var submitResp splaiapi.SubmitJobResponse
 	doJSON(t, http.MethodPost, ts.URL+"/v1/jobs", submit, &submitResp)
 	if submitResp.JobID == "" {
 		t.Fatalf("expected job id")
@@ -43,11 +43,11 @@ func TestEndToEndJobLifecycle(t *testing.T) {
 
 	completed := false
 	for i := 0; i < 20; i++ {
-		var assignments daefapi.PollAssignmentsResponse
+		var assignments splaiapi.PollAssignmentsResponse
 		doJSON(t, http.MethodGet, ts.URL+"/v1/workers/worker-test-1/assignments?max_tasks=2", nil, &assignments)
 
 		for _, a := range assignments.Assignments {
-			report := daefapi.ReportTaskResultRequest{
+			report := splaiapi.ReportTaskResultRequest{
 				WorkerID:          "worker-test-1",
 				JobID:             a.JobID,
 				TaskID:            a.TaskID,
@@ -60,7 +60,7 @@ func TestEndToEndJobLifecycle(t *testing.T) {
 			doJSON(t, http.MethodPost, ts.URL+"/v1/tasks/report", report, nil)
 		}
 
-		var job daefapi.JobStatusResponse
+		var job splaiapi.JobStatusResponse
 		doJSON(t, http.MethodGet, ts.URL+"/v1/jobs/"+submitResp.JobID, nil, &job)
 		if job.Status == scheduler.JobCompleted {
 			completed = true
@@ -83,7 +83,7 @@ func TestJobTasksEndpoint(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	register := daefapi.RegisterWorkerRequest{
+	register := splaiapi.RegisterWorkerRequest{
 		WorkerID: "worker-test-2",
 		CPU:      8,
 		Memory:   "16Gi",
@@ -93,23 +93,23 @@ func TestJobTasksEndpoint(t *testing.T) {
 	}
 	doJSON(t, http.MethodPost, ts.URL+"/v1/workers/register", register, nil)
 
-	submit := daefapi.SubmitJobRequest{
+	submit := splaiapi.SubmitJobRequest{
 		Type:     "chat",
 		Input:    "simple prompt",
 		Policy:   "enterprise-default",
 		Priority: "interactive",
 	}
-	var submitResp daefapi.SubmitJobResponse
+	var submitResp splaiapi.SubmitJobResponse
 	doJSON(t, http.MethodPost, ts.URL+"/v1/jobs", submit, &submitResp)
 
-	var assignments daefapi.PollAssignmentsResponse
+	var assignments splaiapi.PollAssignmentsResponse
 	doJSON(t, http.MethodGet, ts.URL+"/v1/workers/worker-test-2/assignments?max_tasks=1", nil, &assignments)
 	if len(assignments.Assignments) != 1 {
 		t.Fatalf("expected 1 assignment, got %d", len(assignments.Assignments))
 	}
 	a := assignments.Assignments[0]
 
-	var tasksBefore daefapi.JobTasksResponse
+	var tasksBefore splaiapi.JobTasksResponse
 	doJSON(t, http.MethodGet, ts.URL+"/v1/jobs/"+submitResp.JobID+"/tasks", nil, &tasksBefore)
 	if len(tasksBefore.Tasks) != 1 {
 		t.Fatalf("expected 1 task in tasks endpoint, got %d", len(tasksBefore.Tasks))
@@ -127,7 +127,7 @@ func TestJobTasksEndpoint(t *testing.T) {
 		t.Fatalf("expected lease id to be populated")
 	}
 
-	report := daefapi.ReportTaskResultRequest{
+	report := splaiapi.ReportTaskResultRequest{
 		WorkerID:          "worker-test-2",
 		JobID:             a.JobID,
 		TaskID:            a.TaskID,
@@ -139,7 +139,7 @@ func TestJobTasksEndpoint(t *testing.T) {
 	}
 	doJSON(t, http.MethodPost, ts.URL+"/v1/tasks/report", report, nil)
 
-	var tasksAfter daefapi.JobTasksResponse
+	var tasksAfter splaiapi.JobTasksResponse
 	doJSON(t, http.MethodGet, ts.URL+"/v1/jobs/"+submitResp.JobID+"/tasks", nil, &tasksAfter)
 	if len(tasksAfter.Tasks) != 1 {
 		t.Fatalf("expected 1 task after report, got %d", len(tasksAfter.Tasks))

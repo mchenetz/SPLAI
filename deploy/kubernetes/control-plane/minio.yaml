@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splai-minio
+  namespace: splai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splai-minio
+  template:
+    metadata:
+      labels:
+        app: splai-minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              value: splai
+            - name: MINIO_ROOT_PASSWORD
+              value: splaiminio
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splai-minio
+  namespace: splai-system
+spec:
+  selector:
+    app: splai-minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001

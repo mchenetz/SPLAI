@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package splai.v1;
+
+option go_package = "github.com/example/splai/proto/splai/v1;splaiv1";
+
+import "splai/v1/common.proto";
+
+service JobService {
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+  rpc GetJobStatus(GetJobStatusRequest) returns (GetJobStatusResponse);
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+}
+
+message SubmitJobRequest {
+  Metadata metadata = 1;
+  string type = 2;
+  string input = 3;
+  string policy = 4;
+  string priority = 5;
+}
+
+message SubmitJobResponse {
+  string job_id = 1;
+}
+
+message GetJobStatusRequest {
+  string job_id = 1;
+}
+
+message GetJobStatusResponse {
+  string job_id = 1;
+  string phase = 2;
+  string message = 3;
+  string result_artifact_uri = 4;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+  string reason = 2;
+}
+
+message CancelJobResponse {
+  bool accepted = 1;
+}

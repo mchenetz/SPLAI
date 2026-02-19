@@ -64,6 +64,22 @@ func (m *MemoryStore) UpdateJob(_ context.Context, job JobRecord) error {
 	return nil
 }
 
+func (m *MemoryStore) CountJobsByTenantStatus(_ context.Context, tenant, status string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	count := 0
+	for _, j := range m.jobs {
+		if tenant != "" && j.Tenant != tenant {
+			continue
+		}
+		if status != "" && j.Status != status {
+			continue
+		}
+		count++
+	}
+	return count, nil
+}
+
 func (m *MemoryStore) ListTasksByJob(_ context.Context, jobID string) ([]TaskRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -95,6 +111,28 @@ func (m *MemoryStore) UpdateTask(_ context.Context, task TaskRecord) error {
 	task.UpdatedAt = time.Now().UTC()
 	m.tasks[task.JobID][task.TaskID] = task
 	return nil
+}
+
+func (m *MemoryStore) CountTasksByTenantStatus(_ context.Context, tenant, status string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	count := 0
+	for jobID, byID := range m.tasks {
+		job, ok := m.jobs[jobID]
+		if !ok {
+			continue
+		}
+		if tenant != "" && job.Tenant != tenant {
+			continue
+		}
+		for _, t := range byID {
+			if status != "" && t.Status != status {
+				continue
+			}
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (m *MemoryStore) ListExpiredLeasedTasks(_ context.Context, now time.Time) ([]TaskRecord, error) {
@@ -132,6 +170,16 @@ func (m *MemoryStore) GetWorker(_ context.Context, workerID string) (WorkerRecor
 	return w, ok, nil
 }
 
+func (m *MemoryStore) ListWorkers(_ context.Context) ([]WorkerRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]WorkerRecord, 0, len(m.workers))
+	for _, w := range m.workers {
+		out = append(out, w)
+	}
+	return out, nil
+}
+
 func (m *MemoryStore) UpdateWorkerHeartbeat(_ context.Context, workerID string, queueDepth, runningTasks int, cpuUtil, memUtil float64, health string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -164,6 +212,42 @@ func (m *MemoryStore) ExtendWorkerLeases(_ context.Context, workerID string, now
 		m.tasks[jobID] = byID
 	}
 	return nil
+}
+
+func (m *MemoryStore) ListTasksByWorkerStatus(_ context.Context, workerID, status string) ([]TaskRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]TaskRecord, 0, 16)
+	for _, byID := range m.tasks {
+		for _, t := range byID {
+			if workerID != "" && t.WorkerID != workerID {
+				continue
+			}
+			if status != "" && t.Status != status {
+				continue
+			}
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (m *MemoryStore) CountTasksByWorkerStatus(_ context.Context, workerID, status string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, byID := range m.tasks {
+		for _, t := range byID {
+			if workerID != "" && t.WorkerID != workerID {
+				continue
+			}
+			if status != "" && t.Status != status {
+				continue
+			}
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (m *MemoryStore) AppendAuditEvent(_ context.Context, event AuditEventRecord) error {

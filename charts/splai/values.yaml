@@ -1,0 +1,78 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+apiGateway:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/example/splai-api-gateway
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  env:
+    SPLAI_STORE: postgres
+    SPLAI_QUEUE: redis
+    SPLAI_LEASE_SECONDS: "15"
+    SPLAI_POSTGRES_DSN: postgres://splai:splai@splai-postgres:5432/splai?sslmode=disable
+    SPLAI_REDIS_ADDR: splai-redis:6379
+
+scheduler:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/example/splai-scheduler
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+
+planner:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/example/splai-planner
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+
+worker:
+  enabled: true
+  image:
+    repository: ghcr.io/example/splai-worker-agent
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  artifactRoot: /var/lib/splai/artifacts
+  maxParallelTasks: "2"
+  heartbeatSeconds: "5"
+  pollMillis: "1500"
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+  auth:
+    username: splai
+    password: splai
+    database: splai
+  persistence:
+    enabled: false
+    size: 10Gi
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7"
+    pullPolicy: IfNotPresent
+
+minio:
+  enabled: false
+  image:
+    repository: minio/minio
+    tag: RELEASE.2025-01-20T14-49-07Z
+    pullPolicy: IfNotPresent
+  rootUser: splai
+  rootPassword: splaiminio
+  bucket: splai-artifacts

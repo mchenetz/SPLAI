@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package splai.v1;
+
+option go_package = "github.com/example/splai/proto/splai/v1;splaiv1";
+
+message Metadata {
+  string request_id = 1;
+  string tenant = 2;
+  string trace_id = 3;
+}
+
+message ResourceRequest {
+  uint32 cpu = 1;
+  string memory = 2;
+  bool gpu = 3;
+}
+
+message Constraint {
+  string data_locality = 1;
+}
+
+message Task {
+  string task_id = 1;
+  string type = 2;
+  map<string, string> inputs = 3;
+  ResourceRequest resources = 4;
+  Constraint constraints = 5;
+  uint32 timeout_seconds = 6;
+  uint32 max_retries = 7;
+}
+
+message Dependency {
+  string from_task_id = 1;
+  string to_task_id = 2;
+}
+
+message DAG {
+  string dag_id = 1;
+  repeated Task tasks = 2;
+  repeated Dependency dependencies = 3;
+}
+
+message JobRef {
+  string job_id = 1;
+}
+
+message Empty {}

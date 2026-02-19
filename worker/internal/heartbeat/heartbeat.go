@@ -10,22 +10,24 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/example/daef/pkg/daefapi"
+	"github.com/example/splai/pkg/splaiapi"
 )
 
 type Client struct {
 	baseURL      string
 	workerID     string
+	apiToken     string
 	interval     time.Duration
 	runningTasks atomic.Int64
 	queueDepth   atomic.Int64
 	httpClient   *http.Client
 }
 
-func New(baseURL, workerID string, interval time.Duration) *Client {
+func New(baseURL, workerID, apiToken string, interval time.Duration) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		workerID:   workerID,
+		apiToken:   strings.TrimSpace(apiToken),
 		interval:   interval,
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}
@@ -52,7 +54,7 @@ func (c *Client) Start(ctx context.Context) {
 }
 
 func (c *Client) send(ctx context.Context) error {
-	payload := daefapi.HeartbeatRequest{
+	payload := splaiapi.HeartbeatRequest{
 		QueueDepth:    int(c.queueDepth.Load()),
 		RunningTasks:  int(c.runningTasks.Load()),
 		CPUUtil:       15.0,
@@ -70,6 +72,9 @@ func (c *Client) send(ctx context.Context) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.apiToken != "" {
+		req.Header.Set("X-SPLAI-Token", c.apiToken)
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err

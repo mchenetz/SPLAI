@@ -8,24 +8,24 @@ type ObjectMeta struct {
 	Labels    map[string]string `json:"labels,omitempty"`
 }
 
-type DAEFJob struct {
+type SPLAIJob struct {
 	APIVersion string        `json:"apiVersion"`
 	Kind       string        `json:"kind"`
 	Metadata   ObjectMeta    `json:"metadata"`
-	Spec       DAEFJobSpec   `json:"spec"`
-	Status     DAEFJobStatus `json:"status,omitempty"`
+	Spec       SPLAIJobSpec   `json:"spec"`
+	Status     SPLAIJobStatus `json:"status,omitempty"`
 }
 
-type DAEFJobSpec struct {
+type SPLAIJobSpec struct {
 	Tenant         string           `json:"tenant"`
 	Priority       string           `json:"priority"`
 	Policy         string           `json:"policy"`
 	TimeoutSeconds int              `json:"timeoutSeconds,omitempty"`
-	Tasks          []DAEFTask       `json:"tasks,omitempty"`
-	Dependencies   []DAEFDependency `json:"dependencies,omitempty"`
+	Tasks          []SPLAITask       `json:"tasks,omitempty"`
+	Dependencies   []SPLAIDependency `json:"dependencies,omitempty"`
 }
 
-type DAEFTask struct {
+type SPLAITask struct {
 	TaskID       string            `json:"taskId"`
 	Type         string            `json:"type"`
 	Inputs       map[string]string `json:"inputs,omitempty"`
@@ -35,12 +35,12 @@ type DAEFTask struct {
 	DataLocality string            `json:"dataLocality,omitempty"`
 }
 
-type DAEFDependency struct {
+type SPLAIDependency struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-type DAEFJobStatus struct {
+type SPLAIJobStatus struct {
 	Phase             string `json:"phase,omitempty"`
 	TraceID           string `json:"traceId,omitempty"`
 	TotalTasks        int    `json:"totalTasks,omitempty"`
@@ -50,15 +50,15 @@ type DAEFJobStatus struct {
 	Message           string `json:"message,omitempty"`
 }
 
-type DAEFWorker struct {
+type SPLAIWorker struct {
 	APIVersion string           `json:"apiVersion"`
 	Kind       string           `json:"kind"`
 	Metadata   ObjectMeta       `json:"metadata"`
-	Spec       DAEFWorkerSpec   `json:"spec"`
-	Status     DAEFWorkerStatus `json:"status,omitempty"`
+	Spec       SPLAIWorkerSpec   `json:"spec"`
+	Status     SPLAIWorkerStatus `json:"status,omitempty"`
 }
 
-type DAEFWorkerSpec struct {
+type SPLAIWorkerSpec struct {
 	WorkerID string   `json:"workerId"`
 	CPU      int      `json:"cpu"`
 	Memory   string   `json:"memory"`
@@ -68,7 +68,7 @@ type DAEFWorkerSpec struct {
 	Locality string   `json:"locality,omitempty"`
 }
 
-type DAEFWorkerStatus struct {
+type SPLAIWorkerStatus struct {
 	Health        string    `json:"health,omitempty"`
 	CPUPercent    float64   `json:"cpuPercent,omitempty"`
 	MemoryPercent float64   `json:"memoryPercent,omitempty"`
@@ -77,36 +77,36 @@ type DAEFWorkerStatus struct {
 	LastHeartbeat time.Time `json:"lastHeartbeat,omitempty"`
 }
 
-type DAEFPolicy struct {
+type SPLAIPolicy struct {
 	APIVersion string         `json:"apiVersion"`
 	Kind       string         `json:"kind"`
 	Metadata   ObjectMeta     `json:"metadata"`
-	Spec       DAEFPolicySpec `json:"spec"`
+	Spec       SPLAIPolicySpec `json:"spec"`
 }
 
-type DAEFPolicySpec struct {
-	Deny               []DAEFDenyRule `json:"deny,omitempty"`
+type SPLAIPolicySpec struct {
+	Deny               []SPLAIDenyRule `json:"deny,omitempty"`
 	AllowModels        []string       `json:"allowModels,omitempty"`
 	MaxConcurrentTasks int            `json:"maxConcurrentTasks,omitempty"`
 }
 
-type DAEFDenyRule struct {
+type SPLAIDenyRule struct {
 	Model string `json:"model"`
 	When  string `json:"when"`
 }
 
-type DAEFModelRoute struct {
+type SPLAIModelRoute struct {
 	APIVersion string             `json:"apiVersion"`
 	Kind       string             `json:"kind"`
 	Metadata   ObjectMeta         `json:"metadata"`
-	Spec       DAEFModelRouteSpec `json:"spec"`
+	Spec       SPLAIModelRouteSpec `json:"spec"`
 }
 
-type DAEFModelRouteSpec struct {
-	Rules []DAEFRouteRule `json:"rules"`
+type SPLAIModelRouteSpec struct {
+	Rules []SPLAIRouteRule `json:"rules"`
 }
 
-type DAEFRouteRule struct {
+type SPLAIRouteRule struct {
 	Name     string `json:"name"`
 	If       string `json:"if,omitempty"`
 	Backend  string `json:"backend"`

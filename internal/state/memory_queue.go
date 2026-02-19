@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example/daef/internal/observability"
+	"github.com/example/splai/internal/observability"
 )
 
 type memoryInflight struct {

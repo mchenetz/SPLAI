@@ -20,7 +20,7 @@
 
 ## Alert-to-runbook mapping
 
-- `DAEFDeadLetterNonZero` -> `docs/reference/queue-reliability-runbook.md`
-- `DAEFQueueRetryStorm` -> `docs/reference/queue-reliability-runbook.md`
-- `DAEFSchedulerAssignmentErrors` -> `docs/reference/queue-reliability-runbook.md`
-- `DAEFExpiredLeaseChurn` -> `docs/reference/queue-reliability-runbook.md`
+- `SPLAIDeadLetterNonZero` -> `docs/reference/queue-reliability-runbook.md`
+- `SPLAIQueueRetryStorm` -> `docs/reference/queue-reliability-runbook.md`
+- `SPLAISchedulerAssignmentErrors` -> `docs/reference/queue-reliability-runbook.md`
+- `SPLAIExpiredLeaseChurn` -> `docs/reference/queue-reliability-runbook.md`

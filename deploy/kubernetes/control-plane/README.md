@@ -1,11 +1,20 @@
 # Control Plane Manifests
 
-This directory holds Kubernetes manifests (or Helm/Kustomize overlays) for:
+This directory contains runnable manifests for:
 
-- API Gateway Deployment + Service
-- Planner Deployment + Service
-- Scheduler Deployment + Service
-- DAEF Operator Deployment
-- Postgres / Redis / MinIO dependencies
+- `namespace.yaml`
+- `postgres.yaml`
+- `redis.yaml`
+- `minio.yaml`
+- `api-gateway.yaml`
+- `planner.yaml`
+- `scheduler.yaml`
+- `operator.yaml`
+
+Apply with:
+
+```bash
+kubectl apply -k deploy/kubernetes/control-plane
+```
 
 Use `config/crd/bases/` CRDs before deploying controllers.

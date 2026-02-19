@@ -1,27 +1,61 @@
 # Persistent Control Plane (Postgres + Redis)
 
-DAEF now supports pluggable control-plane persistence and queue backends.
+SPLAI now supports pluggable control-plane persistence and queue backends.
 
 ## Backends
 
-- Store (`DAEF_STORE`): `memory` (default) or `postgres`
-- Queue (`DAEF_QUEUE`): `memory` (default) or `redis`
+- Store (`SPLAI_STORE`): `memory` (default) or `postgres`
+- Queue (`SPLAI_QUEUE`): `memory` (default) or `redis`
 
 ## Environment variables
 
-- `DAEF_STORE`
-- `DAEF_QUEUE`
-- `DAEF_POSTGRES_DSN` (required if `DAEF_STORE=postgres`)
-- `DAEF_REDIS_ADDR` (default `127.0.0.1:6379`)
-- `DAEF_REDIS_PASSWORD` (optional)
-- `DAEF_REDIS_DB` (default `0`)
-- `DAEF_REDIS_KEY` (default `daef:tasks`)
-- `DAEF_REDIS_DEADLETTER_MAX` (default `5`)
-- `DAEF_LEASE_SECONDS` (default `15`)
-- `DAEF_ADMIN_REQUEUE_MAX_BATCH` (default `100`)
-- `DAEF_ADMIN_REQUEUE_RATE_LIMIT_PER_MIN` (default `30`)
-- `DAEF_ADMIN_REQUEUE_CONFIRM_THRESHOLD` (default `20`)
-- `DAEF_ADMIN_REQUEUE_CONFIRM_TOKEN` (optional, enables `X-DAEF-Confirm` requirement for large requeues)
+- `SPLAI_STORE`
+- `SPLAI_QUEUE`
+- `SPLAI_POSTGRES_DSN` (required if `SPLAI_STORE=postgres`)
+- `SPLAI_REDIS_ADDR` (default `127.0.0.1:6379`)
+- `SPLAI_REDIS_PASSWORD` (optional)
+- `SPLAI_REDIS_DB` (default `0`)
+- `SPLAI_REDIS_KEY` (default `splai:tasks`)
+- `SPLAI_REDIS_DEADLETTER_MAX` (default `5`)
+- `SPLAI_LEASE_SECONDS` (default `15`)
+- `SPLAI_POLICY_FILE` (optional YAML policy config; enforces submit + assignment policy gates)
+- `SPLAI_MODEL_ROUTING_FILE` (optional YAML model routing rules; used by API gateway)
+- `SPLAI_LLM_PLANNER_ENDPOINT` (optional HTTP endpoint for `planner_mode=llm_planner`)
+- `SPLAI_LLM_PLANNER_API_KEY` (optional bearer token for LLM planner endpoint)
+- `SPLAI_OTEL_EXPORTER` (`none`, `stdout`, `otlpgrpc`/`otlp`, `otlphttp`)
+- `SPLAI_OTEL_ENDPOINT` (gRPC: `host:port`; HTTP: full URL)
+- `SPLAI_OTEL_INSECURE` (`true`/`false`)
+- `SPLAI_OTEL_HEADERS` (comma-separated `k=v`)
+- `SPLAI_OTEL_SAMPLER` (`always_on`, `always_off`, `ratio`)
+- `SPLAI_OTEL_SAMPLER_RATIO` (`0.0`-`1.0`)
+- `SPLAI_ENVIRONMENT` (optional tracing resource tag)
+- OpenAI compatibility:
+  - `SPLAI_OPENAI_COMPAT` (`true`/`false`)
+  - `SPLAI_OPENAI_COMPAT_TIMEOUT_SECONDS` (default `60`)
+- RBAC role mapping:
+  - `SPLAI_API_ROLES` (for example `ops=operator|metrics`)
+  - `SPLAI_API_TOKEN_ROLES` (for example `operator-token=ops`)
+- Scheduler tuning:
+  - `SPLAI_SCHEDULER_PREEMPT`
+  - `SPLAI_SCHED_WEIGHT_CAPABILITY_MATCH`
+  - `SPLAI_SCHED_WEIGHT_MODEL_WARM_CACHE`
+  - `SPLAI_SCHED_WEIGHT_LOCALITY`
+  - `SPLAI_SCHED_WEIGHT_QUEUE_PENALTY`
+  - `SPLAI_SCHED_WEIGHT_LATENCY`
+  - `SPLAI_SCHED_WEIGHT_FAIRNESS`
+  - `SPLAI_SCHED_WEIGHT_WAIT_AGE`
+- Worker artifact backend:
+  - `SPLAI_ARTIFACT_BACKEND` (`local` or `minio`)
+  - `SPLAI_ARTIFACT_ROOT` (local artifact root, default `/tmp/splai-artifacts`)
+  - `SPLAI_MINIO_ENDPOINT`
+  - `SPLAI_MINIO_ACCESS_KEY`
+  - `SPLAI_MINIO_SECRET_KEY`
+  - `SPLAI_MINIO_BUCKET`
+  - `SPLAI_MINIO_USE_SSL`
+- `SPLAI_ADMIN_REQUEUE_MAX_BATCH` (default `100`)
+- `SPLAI_ADMIN_REQUEUE_RATE_LIMIT_PER_MIN` (default `30`)
+- `SPLAI_ADMIN_REQUEUE_CONFIRM_THRESHOLD` (default `20`)
+- `SPLAI_ADMIN_REQUEUE_CONFIRM_TOKEN` (optional, enables `X-SPLAI-Confirm` requirement for large requeues)
 
 ## Start local infra
 
@@ -32,10 +66,10 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 ## Run gateway with persistent backends
 
 ```bash
-DAEF_STORE=postgres \
-DAEF_POSTGRES_DSN='postgres://daef:daef@127.0.0.1:5432/daef?sslmode=disable' \
-DAEF_QUEUE=redis \
-DAEF_REDIS_ADDR=127.0.0.1:6379 \
+SPLAI_STORE=postgres \
+SPLAI_POSTGRES_DSN='postgres://splai:splai@127.0.0.1:5432/splai?sslmode=disable' \
+SPLAI_QUEUE=redis \
+SPLAI_REDIS_ADDR=127.0.0.1:6379 \
 go run ./cmd/api-gateway
 ```
 
@@ -48,7 +82,7 @@ go run ./cmd/api-gateway
   - pending list: `<key>:pending`
   - claims hash + visibility zset: `<key>:claims`, `<key>:visibility`
   - dead-letter list: `<key>:dead`
-- If persistence env vars are omitted, DAEF falls back to in-memory mode.
+- If persistence env vars are omitted, SPLAI falls back to in-memory mode.
 
 ## Dead-letter admin API
 
@@ -67,7 +101,7 @@ go run ./cmd/api-gateway
 
 Authentication/authorization:
 
-- Optional token auth can be enabled via `DAEF_API_TOKENS`.
+- Optional token auth can be enabled via `SPLAI_API_TOKENS`.
 - Format: `token:scope1|scope2,token2:scope`.
 - Required scopes:
   - `operator` for dead-letter admin endpoints
@@ -84,6 +118,39 @@ Authentication/authorization:
 - Scope required: `operator`
 - Returns audit events for admin actions (for example dead-letter list/requeue), including actor, tenant, payload hash, and result.
 - Audit records include integrity-chain fields: `prev_hash` and `event_hash`.
+- Policy decision events are also persisted:
+  - `policy_check_submit`
+  - `policy_check_assignment`
+
+## Policy file example
+
+```yaml
+default_action: allow
+tenant_quotas:
+  tenant-a:
+    max_running_jobs: 20
+    max_running_tasks: 200
+rules:
+  - name: deny-confidential-external
+    effect: deny
+    reason: confidential_external_forbidden
+    match:
+      data_classification: confidential
+      model: external_api
+```
+
+## Model routing file example
+
+```yaml
+default_backend: ollama
+default_model: llama3-8b-q4
+rules:
+  - name: reasoning-gpu
+    latency_class: interactive
+    reasoning_required: true
+    use_backend: vllm
+    use_model: llama3-70b
+```
 
 ## Job task status API
 
@@ -115,7 +182,7 @@ Deployment assets:
 
 - `deploy/kubernetes/observability/prometheus-scrape-config.yaml`
 - `deploy/kubernetes/observability/prometheus-rules.yaml`
-- `deploy/kubernetes/observability/grafana-dashboard-daef-queue.json`
+- `deploy/kubernetes/observability/grafana-dashboard-splai-queue.json`
 
 ## Add a migration
 

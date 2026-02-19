@@ -5,9 +5,9 @@ Date: 2026-02-19
 ## Scope checked
 
 - REST surface in gateway handlers
-- OpenAPI spec: `openapi/daef-admin-task.yaml`
-- JSON DTOs: `pkg/daefapi/types.go`
-- Proto contracts under `proto/daef/v1/`
+- OpenAPI spec: `openapi/splai-admin-task.yaml`
+- JSON DTOs: `pkg/splaiapi/types.go`
+- Proto contracts under `proto/splai/v1/`
 - User-facing docs (`README.md`, persistent control-plane reference)
 
 ## Result
@@ -34,5 +34,5 @@ No blocking inconsistencies found for the currently implemented REST endpoints.
 ## Release recommendation
 
 - Proceed to staging with current API surface.
-- Keep `openapi/daef-admin-task.yaml` as source of truth for REST compatibility checks in CI.
+- Keep `openapi/splai-admin-task.yaml` as source of truth for REST compatibility checks in CI.
 

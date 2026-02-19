@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/example/daef/controllers"
+	"github.com/example/splai/controllers"
 )
 
 func main() {

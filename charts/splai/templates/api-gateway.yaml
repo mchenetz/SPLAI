@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "splai.fullname" . }}-api-gateway
+spec:
+  replicas: {{ .Values.apiGateway.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "splai.fullname" . }}-api-gateway
+  template:
+    metadata:
+      labels:
+        app: {{ include "splai.fullname" . }}-api-gateway
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: api-gateway
+          image: "{{ .Values.apiGateway.image.repository }}:{{ .Values.apiGateway.image.tag }}"
+          imagePullPolicy: {{ .Values.apiGateway.image.pullPolicy }}
+          env:
+            - name: SPLAI_STORE
+              value: {{ .Values.apiGateway.env.SPLAI_STORE | quote }}
+            - name: SPLAI_QUEUE
+              value: {{ .Values.apiGateway.env.SPLAI_QUEUE | quote }}
+            - name: SPLAI_LEASE_SECONDS
+              value: {{ .Values.apiGateway.env.SPLAI_LEASE_SECONDS | quote }}
+            - name: SPLAI_POSTGRES_DSN
+              value: {{ .Values.apiGateway.env.SPLAI_POSTGRES_DSN | quote }}
+            - name: SPLAI_REDIS_ADDR
+              value: {{ .Values.apiGateway.env.SPLAI_REDIS_ADDR | quote }}
+          ports:
+            - containerPort: {{ .Values.apiGateway.service.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.apiGateway.service.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.apiGateway.service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "splai.fullname" . }}-api-gateway
+spec:
+  type: {{ .Values.apiGateway.service.type }}
+  selector:
+    app: {{ include "splai.fullname" . }}-api-gateway
+  ports:
+    - name: http
+      port: {{ .Values.apiGateway.service.port }}
+      targetPort: {{ .Values.apiGateway.service.port }}

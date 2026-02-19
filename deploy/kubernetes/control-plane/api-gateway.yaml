@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splai-api-gateway
+  namespace: splai-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: splai-api-gateway
+  template:
+    metadata:
+      labels:
+        app: splai-api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: ghcr.io/example/splai-api-gateway:v0.1.0
+          env:
+            - name: SPLAI_STORE
+              value: postgres
+            - name: SPLAI_POSTGRES_DSN
+              value: postgres://splai:splai@splai-postgres.splai-system.svc.cluster.local:5432/splai?sslmode=disable
+            - name: SPLAI_QUEUE
+              value: redis
+            - name: SPLAI_REDIS_ADDR
+              value: splai-redis.splai-system.svc.cluster.local:6379
+            - name: SPLAI_LEASE_SECONDS
+              value: "15"
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splai-api-gateway
+  namespace: splai-system
+spec:
+  selector:
+    app: splai-api-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: splai-worker
+  namespace: splai-system
+spec:
+  selector:
+    matchLabels:
+      app: splai-worker
+  template:
+    metadata:
+      labels:
+        app: splai-worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/example/splai-worker-agent:v0.1.0
+          env:
+            - name: SPLAI_CONTROL_PLANE_URL
+              value: http://splai-api-gateway.splai-system.svc.cluster.local:8080
+            - name: SPLAI_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SPLAI_ARTIFACT_ROOT
+              value: /var/lib/splai/artifacts
+          volumeMounts:
+            - name: artifact-dir
+              mountPath: /var/lib/splai/artifacts
+      volumes:
+        - name: artifact-dir
+          hostPath:
+            path: /var/lib/splai/artifacts
+            type: DirectoryOrCreate

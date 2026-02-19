@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [0.1.0] - 2026-02-19
 
 ### Added
-- Initial Distributed AI Execution Fabric (DAEF) control-plane and worker scaffold.
+- Initial Distributed AI Execution Fabric (SPLAI) control-plane and worker scaffold.
 - In-memory end-to-end execution path for job submission, planning, scheduling, assignment, and task reporting.
 - Persistent backends:
   - Postgres state store.
@@ -31,7 +31,7 @@ All notable changes to this project are documented in this file.
   - alert rules
   - Grafana dashboard
 - Release/OpenAPI assets:
-  - `openapi/daef-admin-task.yaml`
+  - `openapi/splai-admin-task.yaml`
   - release hardening checklist
 
 ### Database Migrations

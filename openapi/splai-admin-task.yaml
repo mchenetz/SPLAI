@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: SPLAI Admin and Task APIs
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /v1/jobs:
+    post:
+      summary: Submit a job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string }
+                input: { type: string }
+                policy: { type: string }
+                priority: { type: string }
+                planner_mode: { type: string, enum: [template, llm_planner, hybrid] }
+                install_model_if_missing: { type: boolean }
+                tenant: { type: string }
+                model: { type: string }
+                latency_class: { type: string }
+                reasoning_required: { type: boolean }
+                data_classification: { type: string }
+                network_isolation: { type: string }
+      responses:
+        '202':
+          description: Accepted
+        '403':
+          description: Denied by policy
+  /v1/jobs/{id}:
+    get:
+      summary: Get job status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+    delete:
+      summary: Cancel job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /v1/jobs/{id}/tasks:
+    get:
+      summary: List job tasks with filters and pagination
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: worker_id
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200': { description: OK }
+  /v1/metrics:
+    get:
+      summary: JSON metrics snapshot
+      security:
+        - bearerAuth: [metrics]
+      responses:
+        '200': { description: OK }
+  /v1/metrics/prometheus:
+    get:
+      summary: Prometheus text metrics
+      security:
+        - bearerAuth: [metrics]
+      responses:
+        '200': { description: OK }
+  /v1/admin/queue/dead-letter:
+    get:
+      summary: List dead-letter tasks
+      security:
+        - bearerAuth: [operator]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Requeue selected dead-letter tasks
+      security:
+        - bearerAuth: [operator]
+      parameters:
+        - in: header
+          name: X-SPLAI-Confirm
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run: { type: boolean }
+                tasks:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      job_id: { type: string }
+                      task_id: { type: string }
+      responses:
+        '200': { description: OK }
+  /v1/admin/audit:
+    get:
+      summary: List admin audit events
+      security:
+        - bearerAuth: [operator]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: actor
+          schema: { type: string }
+        - in: query
+          name: tenant
+          schema: { type: string }
+        - in: query
+          name: result
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: format
+          schema: { type: string, enum: [json, csv] }
+      responses:
+        '200': { description: OK }
+  /v1/admin/models/prefetch:
+    post:
+      summary: Prefetch a model onto selected workers
+      security:
+        - bearerAuth: [operator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model]
+              properties:
+                model: { type: string }
+                source: { type: string, enum: [huggingface] }
+                workers:
+                  type: array
+                  items: { type: string }
+                only_missing: { type: boolean }
+                priority: { type: string }
+                tenant: { type: string }
+      responses:
+        '202': { description: Accepted }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-token

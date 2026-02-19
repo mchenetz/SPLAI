@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/daef/pkg/daefapi"
-	"github.com/example/daef/worker/internal/config"
+	"github.com/example/splai/pkg/splaiapi"
+	"github.com/example/splai/worker/internal/config"
 )
 
 func Register(ctx context.Context, cfg config.Config) error {
-	payload := daefapi.RegisterWorkerRequest{
+	payload := splaiapi.RegisterWorkerRequest{
 		WorkerID: cfg.WorkerID,
 		CPU:      8,
 		Memory:   "16Gi",
@@ -34,6 +34,9 @@ func Register(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if tok := strings.TrimSpace(cfg.APIToken); tok != "" {
+		req.Header.Set("X-SPLAI-Token", tok)
+	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)

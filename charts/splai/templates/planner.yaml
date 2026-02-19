@@ -1,0 +1,24 @@
+{{- if .Values.planner.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "splai.fullname" . }}-planner
+spec:
+  replicas: {{ .Values.planner.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "splai.fullname" . }}-planner
+  template:
+    metadata:
+      labels:
+        app: {{ include "splai.fullname" . }}-planner
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: planner
+          image: "{{ .Values.planner.image.repository }}:{{ .Values.planner.image.tag }}"
+          imagePullPolicy: {{ .Values.planner.image.pullPolicy }}
+{{- end }}

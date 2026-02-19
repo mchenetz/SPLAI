@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/example/daef/api/v1alpha1"
+	"github.com/example/splai/api/v1alpha1"
 )
 
 type WorkerReconciler struct {
@@ -16,7 +16,7 @@ func NewWorkerReconciler(staleAfter time.Duration) *WorkerReconciler {
 	return &WorkerReconciler{staleAfter: staleAfter}
 }
 
-func (r *WorkerReconciler) Reconcile(_ context.Context, worker *v1alpha1.DAEFWorker) {
+func (r *WorkerReconciler) Reconcile(_ context.Context, worker *v1alpha1.SPLAIWorker) {
 	if worker == nil {
 		return
 	}

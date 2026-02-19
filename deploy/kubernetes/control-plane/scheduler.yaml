@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splai-scheduler
+  namespace: splai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splai-scheduler
+  template:
+    metadata:
+      labels:
+        app: splai-scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: ghcr.io/example/splai-scheduler:v0.1.0
+          args: []
