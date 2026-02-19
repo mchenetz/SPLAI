@@ -3,6 +3,8 @@
 SPLAI is a distributed runtime for AI workloads.
 It turns requests into task graphs, schedules them across workers, and returns traceable results.
 
+![SPLAI Architecture](docs/assets/splai-architecture.svg)
+
 ## What You Can Do With It
 
 - Run AI jobs across many CPU workers (GPU optional)
