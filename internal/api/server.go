@@ -554,6 +554,15 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if subresource == "stream" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.streamJobEvents(w, r, jobID)
+		return
+	}
+
 	if subresource == "tasks" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -684,6 +693,212 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (s *Server) streamJobEvents(w http.ResponseWriter, r *http.Request, jobID string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	job, found, err := s.engine.GetJob(jobID)
+	if err != nil {
+		_ = writeSSEEvent(w, "error", map[string]any{"message": err.Error()})
+		flusher.Flush()
+		return
+	}
+	if !found {
+		_ = writeSSEEvent(w, "error", map[string]any{"message": "job not found"})
+		flusher.Flush()
+		return
+	}
+	tasks, _, err := s.engine.GetJobTasks(jobID)
+	if err != nil {
+		_ = writeSSEEvent(w, "error", map[string]any{"message": err.Error()})
+		flusher.Flush()
+		return
+	}
+	taskStates := make(map[string]string, len(tasks))
+	for _, t := range tasks {
+		taskStates[t.TaskID] = taskStateHash(t)
+	}
+	lastJobState := jobStateHash(job)
+
+	_ = writeSSEEvent(w, "job.snapshot", map[string]any{
+		"job":   jobStatusPayload(job),
+		"tasks": taskStatusPayloads(tasks),
+	})
+	flusher.Flush()
+
+	if isTerminalJobStatus(job.Status) {
+		_ = writeSSEEvent(w, terminalEventForStatus(job.Status), jobStatusPayload(job))
+		flusher.Flush()
+		return
+	}
+
+	pollTicker := time.NewTicker(500 * time.Millisecond)
+	defer pollTicker.Stop()
+	keepaliveTicker := time.NewTicker(15 * time.Second)
+	defer keepaliveTicker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-keepaliveTicker.C:
+			_, _ = w.Write([]byte(": keepalive\n\n"))
+			flusher.Flush()
+		case <-pollTicker.C:
+			job, found, err = s.engine.GetJob(jobID)
+			if err != nil {
+				_ = writeSSEEvent(w, "error", map[string]any{"message": err.Error()})
+				flusher.Flush()
+				return
+			}
+			if !found {
+				_ = writeSSEEvent(w, "error", map[string]any{"message": "job not found"})
+				flusher.Flush()
+				return
+			}
+			tasks, _, err = s.engine.GetJobTasks(jobID)
+			if err != nil {
+				_ = writeSSEEvent(w, "error", map[string]any{"message": err.Error()})
+				flusher.Flush()
+				return
+			}
+
+			currentJobState := jobStateHash(job)
+			if currentJobState != lastJobState {
+				_ = writeSSEEvent(w, "job.status", jobStatusPayload(job))
+				lastJobState = currentJobState
+			}
+
+			for _, t := range tasks {
+				currentTaskState := taskStateHash(t)
+				prev, exists := taskStates[t.TaskID]
+				if !exists || prev != currentTaskState {
+					_ = writeSSEEvent(w, "task.update", taskStatusPayload(t))
+					taskStates[t.TaskID] = currentTaskState
+				}
+			}
+			flusher.Flush()
+
+			if isTerminalJobStatus(job.Status) {
+				_ = writeSSEEvent(w, terminalEventForStatus(job.Status), jobStatusPayload(job))
+				flusher.Flush()
+				return
+			}
+		}
+	}
+}
+
+func writeSSEEvent(w http.ResponseWriter, event string, payload any) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write([]byte("event: " + event + "\n")); err != nil {
+		return err
+	}
+	if _, err := w.Write([]byte("data: " + string(b) + "\n\n")); err != nil {
+		return err
+	}
+	return nil
+}
+
+func isTerminalJobStatus(status string) bool {
+	switch status {
+	case scheduler.JobCompleted, scheduler.JobFailed, scheduler.JobCanceled, scheduler.JobArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalEventForStatus(status string) string {
+	switch status {
+	case scheduler.JobCompleted:
+		return "job.completed"
+	case scheduler.JobFailed:
+		return "job.failed"
+	case scheduler.JobCanceled:
+		return "job.canceled"
+	case scheduler.JobArchived:
+		return "job.archived"
+	default:
+		return "job.terminal"
+	}
+}
+
+func jobStateHash(job *scheduler.Job) string {
+	if job == nil {
+		return ""
+	}
+	return strings.Join([]string{
+		job.Status,
+		job.Message,
+		job.ResultArtifactURI,
+		job.UpdatedAt.Format(time.RFC3339Nano),
+	}, "|")
+}
+
+func taskStateHash(t scheduler.TaskStatus) string {
+	return strings.Join([]string{
+		t.Status,
+		strconv.Itoa(t.Attempt),
+		t.WorkerID,
+		t.LeaseID,
+		t.OutputURI,
+		t.Error,
+		t.UpdatedAt.Format(time.RFC3339Nano),
+	}, "|")
+}
+
+func jobStatusPayload(job *scheduler.Job) map[string]any {
+	if job == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"job_id":              job.ID,
+		"status":              job.Status,
+		"message":             job.Message,
+		"result_artifact_uri": job.ResultArtifactURI,
+		"created_at":          job.CreatedAt.Format(http.TimeFormat),
+		"updated_at":          job.UpdatedAt.Format(http.TimeFormat),
+	}
+}
+
+func taskStatusPayloads(tasks []scheduler.TaskStatus) []map[string]any {
+	out := make([]map[string]any, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, taskStatusPayload(t))
+	}
+	return out
+}
+
+func taskStatusPayload(t scheduler.TaskStatus) map[string]any {
+	out := map[string]any{
+		"task_id":             t.TaskID,
+		"type":                t.Type,
+		"status":              t.Status,
+		"attempt":             t.Attempt,
+		"worker_id":           t.WorkerID,
+		"lease_id":            t.LeaseID,
+		"output_artifact_uri": t.OutputURI,
+		"error":               t.Error,
+		"created_at":          t.CreatedAt.Format(http.TimeFormat),
+		"updated_at":          t.UpdatedAt.Format(http.TimeFormat),
+	}
+	if !t.LeaseExpires.IsZero() {
+		out["lease_expires"] = t.LeaseExpires.Format(http.TimeFormat)
+	}
+	return out
 }
 
 func (s *Server) handleRegisterWorker(w http.ResponseWriter, r *http.Request) {
@@ -1251,6 +1466,12 @@ type statusWriter struct {
 func (w *statusWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func withTracing(next http.Handler) http.Handler {

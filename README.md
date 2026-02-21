@@ -70,7 +70,20 @@ curl -s http://localhost:8080/v1/jobs/job-1/tasks | jq
 curl -s "http://localhost:8080/v1/jobs/job-1/tasks?status=Completed" | jq
 ```
 
-### 6. Optional: read a local artifact
+### 6. Optional: stream live job events (SSE)
+
+```bash
+curl -N http://localhost:8080/v1/jobs/job-1/stream
+```
+
+Events include:
+
+- `job.snapshot`
+- `job.status`
+- `task.update`
+- terminal event such as `job.completed` / `job.failed`
+
+### 7. Optional: read a local artifact
 
 ```bash
 cat /tmp/splai-artifacts/job-1/t1-split/output.json | jq
@@ -80,6 +93,7 @@ For guided docs written in instructional style, use:
 
 - `/Users/mchenetz/git/SPLAI/docs/reference/quickstart.md`
 - `/Users/mchenetz/git/SPLAI/docs/reference/user-guide.md`
+- `/Users/mchenetz/git/SPLAI/docs/reference/integration-guide.md`
 
 ## OpenAI-Compatible Mode (Drop-In for Existing Apps)
 

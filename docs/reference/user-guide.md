@@ -200,6 +200,21 @@ Then verify:
 curl -s http://localhost:8080/v1/jobs/job-1 | jq
 ```
 
+## Stream live progress (SSE)
+
+You can stream live events instead of polling:
+
+```bash
+curl -N http://localhost:8080/v1/jobs/job-1/stream
+```
+
+You will receive events such as:
+
+- `job.snapshot`
+- `job.status`
+- `task.update`
+- terminal event (`job.completed`, `job.failed`, `job.canceled`, or `job.archived`)
+
 ## Multi-worker example
 
 Start another worker in terminal window D:

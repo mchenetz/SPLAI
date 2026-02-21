@@ -2,10 +2,13 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,6 +155,87 @@ func TestJobTasksEndpoint(t *testing.T) {
 	}
 	if tasksAfter.Tasks[0].OutputURI == "" {
 		t.Fatalf("expected output uri after completion")
+	}
+}
+
+func TestJobStreamSSEEndpoint(t *testing.T) {
+	engine := scheduler.NewInMemoryEngine()
+	srv := NewServer(planner.NewCompiler(), engine)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	if err := engine.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-stream-1",
+		CPU:      8,
+		Memory:   "16Gi",
+		Models:   []string{"llama3-8b-q4"},
+	}); err != nil {
+		t.Fatalf("register worker: %v", err)
+	}
+
+	dag := planner.DAG{
+		DAGID: "dag-stream",
+		Tasks: []planner.Task{
+			{
+				TaskID:     "t1",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"prompt": "hello"},
+				TimeoutSec: 30,
+				MaxRetries: 1,
+			},
+		},
+	}
+	if err := engine.AddJob("job-stream", "tenant-a", "chat", "hello", "enterprise-default", "interactive", "internal", "llama3-8b-q4", "default", dag); err != nil {
+		t.Fatalf("add job: %v", err)
+	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		assignments, err := engine.PollAssignments("worker-stream-1", 1)
+		if err != nil || len(assignments) == 0 {
+			return
+		}
+		a := assignments[0]
+		_ = engine.ReportTaskResult(splaiapi.ReportTaskResultRequest{
+			WorkerID:          "worker-stream-1",
+			JobID:             a.JobID,
+			TaskID:            a.TaskID,
+			LeaseID:           a.LeaseID,
+			IdempotencyKey:    fmt.Sprintf("worker-stream-1:%s:%s:%d", a.JobID, a.TaskID, a.Attempt),
+			Status:            scheduler.JobCompleted,
+			OutputArtifactURI: fmt.Sprintf("artifact://%s/%s/output.json", a.JobID, a.TaskID),
+			DurationMillis:    1,
+		})
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/v1/jobs/job-stream/stream", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("stream request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status: %s", resp.Status)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("expected text/event-stream content type, got %q", ct)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read stream body: %v", err)
+	}
+	raw := string(body)
+	if !strings.Contains(raw, "event: job.snapshot") {
+		t.Fatalf("expected job.snapshot event, got: %s", raw)
+	}
+	if !strings.Contains(raw, "event: job.completed") {
+		t.Fatalf("expected job.completed event, got: %s", raw)
 	}
 }
 

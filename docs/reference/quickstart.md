@@ -119,7 +119,20 @@ cat /tmp/splai-artifacts/job-1/t2-embed/output.json | jq
 curl -s -X DELETE http://localhost:8080/v1/jobs/job-1 | jq
 ```
 
-## Step 8: Run with two workers (optional)
+## Step 8: Stream live job events (optional)
+
+```bash
+curl -N http://localhost:8080/v1/jobs/job-1/stream
+```
+
+Event types include:
+
+- `job.snapshot`
+- `job.status`
+- `task.update`
+- terminal event such as `job.completed`
+
+## Step 9: Run with two workers (optional)
 
 Open terminal D:
 
