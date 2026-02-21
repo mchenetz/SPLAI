@@ -26,6 +26,7 @@ type Config struct {
 	LlamaCPPBaseURL      string
 	RemoteAPIBaseURL     string
 	RemoteAPIKey         string
+	WorkerBackends       string
 	EmbeddingBackend     string
 	EmbeddingModel       string
 	EmbeddingDimension   int
@@ -56,6 +57,7 @@ func FromEnv() Config {
 	llamaCPPBaseURL := getenv("SPLAI_LLAMACPP_BASE_URL", "")
 	remoteAPIBaseURL := getenv("SPLAI_REMOTE_API_BASE_URL", "")
 	remoteAPIKey := getenv("SPLAI_REMOTE_API_KEY", "")
+	workerBackends := getenv("SPLAI_WORKER_BACKENDS", "")
 	embeddingBackend := getenv("SPLAI_EMBEDDING_BACKEND", "local")
 	embeddingModel := getenv("SPLAI_EMBEDDING_MODEL", "nomic-embed-text")
 	embeddingDimension := getenvInt("SPLAI_EMBEDDING_DIMENSION", 384)
@@ -85,6 +87,7 @@ func FromEnv() Config {
 		LlamaCPPBaseURL:      llamaCPPBaseURL,
 		RemoteAPIBaseURL:     remoteAPIBaseURL,
 		RemoteAPIKey:         remoteAPIKey,
+		WorkerBackends:       workerBackends,
 		EmbeddingBackend:     embeddingBackend,
 		EmbeddingModel:       embeddingModel,
 		EmbeddingDimension:   embeddingDimension,

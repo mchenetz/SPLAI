@@ -32,6 +32,7 @@ The worker agent is designed as a long-running process that:
 - `SPLAI_MODEL_CACHE_DIR` (default `${SPLAI_ARTIFACT_ROOT}/models`): local model cache root used for `model_download` and optional auto-install behavior.
 - `SPLAI_API_TOKEN` (optional): bearer token sent as `X-SPLAI-Token` for register/heartbeat/assignment/report requests when control-plane auth is enabled.
 - `HF_TOKEN` (optional): token passed through to `hf` / `huggingface-cli` / `git` model download flows for private Hugging Face repos.
+- `SPLAI_WORKER_BACKENDS` (optional, CSV): explicitly advertise reachable LLM backends (for example `ollama,vllm`).
 - `SPLAI_EMBEDDING_BACKEND` (default `local`): embedding backend (`local`, `ollama`, `vllm`, `remote_api`).
 - `SPLAI_EMBEDDING_MODEL` (default `nomic-embed-text`): default embedding model ID.
 - `SPLAI_EMBEDDING_DIMENSION` (default `384`): default local embedding vector size when task input does not override it.
@@ -74,3 +75,16 @@ The `aggregation` task supports structured reduction over dependency artifacts a
 - `items_json`: optional inline JSON array of objects to include as aggregation sources.
 - `required_fields` or `required_fields_json`: required keys that must exist in merged output.
 - `strict_dependencies` (default `true`): fail if dependency artifact cannot be loaded.
+
+## Backend-aware scheduling guidance
+
+Recommended for distributed + locality-aware scale:
+
+1. Run Ollama per worker node (or otherwise node-local to the worker process).
+2. Set `SPLAI_OLLAMA_BASE_URL` to the node-local endpoint (example `http://127.0.0.1:11434`).
+3. Prefetch models to workers (`model_download` tasks) so model inventory is warm.
+4. Ensure worker registration advertises backend/model capabilities.
+
+Scheduler behavior:
+
+- `llm_inference` tasks are assigned only to workers that advertise required backend/model capabilities when inventory is available.

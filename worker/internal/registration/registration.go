@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 )
 
 func Register(ctx context.Context, cfg config.Config) error {
+	backends := inferWorkerBackends(cfg)
 	payload := splaiapi.RegisterWorkerRequest{
 		WorkerID: cfg.WorkerID,
 		CPU:      8,
@@ -21,6 +23,7 @@ func Register(ctx context.Context, cfg config.Config) error {
 		GPU:      false,
 		Models:   []string{"llama3-8b-q4"},
 		Tools:    []string{"bash", "python"},
+		Backends: backends,
 		Locality: "local",
 	}
 
@@ -49,4 +52,51 @@ func Register(ctx context.Context, cfg config.Config) error {
 		return fmt.Errorf("register worker failed with status %s", resp.Status)
 	}
 	return nil
+}
+
+func inferWorkerBackends(cfg config.Config) []string {
+	set := map[string]struct{}{}
+	add := func(v string) {
+		v = normalizeBackendName(v)
+		if v != "" {
+			set[v] = struct{}{}
+		}
+	}
+	for _, item := range strings.Split(cfg.WorkerBackends, ",") {
+		add(item)
+	}
+	if strings.TrimSpace(cfg.OllamaBaseURL) != "" {
+		add("ollama")
+	}
+	if strings.TrimSpace(cfg.VLLMBaseURL) != "" {
+		add("vllm")
+	}
+	if strings.TrimSpace(cfg.LlamaCPPBaseURL) != "" {
+		add("llama.cpp")
+	}
+	if strings.TrimSpace(cfg.RemoteAPIBaseURL) != "" {
+		add("remote_api")
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normalizeBackendName(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "":
+		return ""
+	case "remote-api":
+		return "remote_api"
+	case "llamacpp":
+		return "llama.cpp"
+	default:
+		return strings.ToLower(strings.TrimSpace(v))
+	}
 }

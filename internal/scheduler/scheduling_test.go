@@ -315,3 +315,109 @@ func TestArchiveJobFromTerminalState(t *testing.T) {
 		t.Fatalf("expected archived status, got %s", job.Status)
 	}
 }
+
+func TestLLMInferenceRespectsAdvertisedBackendCapability(t *testing.T) {
+	e := NewEngine(state.NewMemoryStore(), state.NewMemoryQueue(), Options{QueueBackend: "memory"})
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-ollama",
+		CPU:      8,
+		Memory:   "16Gi",
+		Backends: []string{"ollama"},
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker-ollama: %v", err)
+	}
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-vllm",
+		CPU:      8,
+		Memory:   "16Gi",
+		Backends: []string{"vllm"},
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker-vllm: %v", err)
+	}
+
+	dag := planner.DAG{
+		DAGID: "dag-backend-capability",
+		Tasks: []planner.Task{
+			{
+				TaskID:     "t1",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"prompt": "hi", "backend": "vllm", "model": "m-a"},
+				TimeoutSec: 30,
+				MaxRetries: 1,
+			},
+		},
+	}
+	if err := e.AddJob("job-backend-capability", "tenant-a", "chat", "hi", "enterprise-default", "interactive", "internal", "m-a", "", dag); err != nil {
+		t.Fatalf("add job: %v", err)
+	}
+
+	a, err := e.PollAssignments("worker-ollama", 1)
+	if err != nil {
+		t.Fatalf("poll worker-ollama: %v", err)
+	}
+	if len(a) != 0 {
+		t.Fatalf("expected no assignment for non-matching backend worker")
+	}
+	b, err := e.PollAssignments("worker-vllm", 1)
+	if err != nil {
+		t.Fatalf("poll worker-vllm: %v", err)
+	}
+	if len(b) != 1 {
+		t.Fatalf("expected one assignment for matching backend worker, got %d", len(b))
+	}
+}
+
+func TestLLMInferenceRespectsAdvertisedModelInventory(t *testing.T) {
+	e := NewEngine(state.NewMemoryStore(), state.NewMemoryQueue(), Options{QueueBackend: "memory"})
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-model-a",
+		CPU:      8,
+		Memory:   "16Gi",
+		Backends: []string{"ollama"},
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker-model-a: %v", err)
+	}
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-model-b",
+		CPU:      8,
+		Memory:   "16Gi",
+		Backends: []string{"ollama"},
+		Models:   []string{"m-b"},
+	}); err != nil {
+		t.Fatalf("register worker-model-b: %v", err)
+	}
+
+	dag := planner.DAG{
+		DAGID: "dag-model-capability",
+		Tasks: []planner.Task{
+			{
+				TaskID:     "t1",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"prompt": "hi", "backend": "ollama", "model": "m-b"},
+				TimeoutSec: 30,
+				MaxRetries: 1,
+			},
+		},
+	}
+	if err := e.AddJob("job-model-capability", "tenant-a", "chat", "hi", "enterprise-default", "interactive", "internal", "m-b", "", dag); err != nil {
+		t.Fatalf("add job: %v", err)
+	}
+
+	a, err := e.PollAssignments("worker-model-a", 1)
+	if err != nil {
+		t.Fatalf("poll worker-model-a: %v", err)
+	}
+	if len(a) != 0 {
+		t.Fatalf("expected no assignment for non-matching model worker")
+	}
+	b, err := e.PollAssignments("worker-model-b", 1)
+	if err != nil {
+		t.Fatalf("poll worker-model-b: %v", err)
+	}
+	if len(b) != 1 {
+		t.Fatalf("expected one assignment for matching model worker, got %d", len(b))
+	}
+}

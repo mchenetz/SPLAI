@@ -302,18 +302,23 @@ func (p *PostgresStore) UpsertWorker(ctx context.Context, worker WorkerRecord) e
 	if err != nil {
 		return err
 	}
+	backends, err := json.Marshal(worker.Backends)
+	if err != nil {
+		return err
+	}
 	if worker.LastHeartbeat.IsZero() {
 		worker.LastHeartbeat = time.Now().UTC()
 	}
 	_, err = p.db.ExecContext(ctx,
-		`INSERT INTO workers (id, cpu, memory, gpu, models_json, tools_json, locality, health, queue_depth, running_tasks, cpu_util, memory_util, last_heartbeat)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		`INSERT INTO workers (id, cpu, memory, gpu, models_json, tools_json, backends_json, locality, health, queue_depth, running_tasks, cpu_util, memory_util, last_heartbeat)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 ON CONFLICT (id) DO UPDATE SET
 		 cpu=EXCLUDED.cpu,
 		 memory=EXCLUDED.memory,
 		 gpu=EXCLUDED.gpu,
 		 models_json=EXCLUDED.models_json,
 		 tools_json=EXCLUDED.tools_json,
+		 backends_json=EXCLUDED.backends_json,
 		 locality=EXCLUDED.locality,
 		 health=EXCLUDED.health,
 		 queue_depth=EXCLUDED.queue_depth,
@@ -321,18 +326,18 @@ func (p *PostgresStore) UpsertWorker(ctx context.Context, worker WorkerRecord) e
 		 cpu_util=EXCLUDED.cpu_util,
 		 memory_util=EXCLUDED.memory_util,
 		 last_heartbeat=EXCLUDED.last_heartbeat`,
-		worker.ID, worker.CPU, worker.Memory, worker.GPU, string(models), string(tools), worker.Locality, worker.Health, worker.QueueDepth, worker.RunningTasks, worker.CPUUtil, worker.MemoryUtil, worker.LastHeartbeat,
+		worker.ID, worker.CPU, worker.Memory, worker.GPU, string(models), string(tools), string(backends), worker.Locality, worker.Health, worker.QueueDepth, worker.RunningTasks, worker.CPUUtil, worker.MemoryUtil, worker.LastHeartbeat,
 	)
 	return err
 }
 
 func (p *PostgresStore) GetWorker(ctx context.Context, workerID string) (WorkerRecord, bool, error) {
 	var w WorkerRecord
-	var modelsJSON, toolsJSON string
+	var modelsJSON, toolsJSON, backendsJSON string
 	err := p.db.QueryRowContext(ctx,
-		`SELECT id, cpu, memory, gpu, models_json, tools_json, locality, health, queue_depth, running_tasks, cpu_util, memory_util, last_heartbeat
+		`SELECT id, cpu, memory, gpu, models_json, tools_json, backends_json, locality, health, queue_depth, running_tasks, cpu_util, memory_util, last_heartbeat
 		 FROM workers WHERE id = $1`, workerID,
-	).Scan(&w.ID, &w.CPU, &w.Memory, &w.GPU, &modelsJSON, &toolsJSON, &w.Locality, &w.Health, &w.QueueDepth, &w.RunningTasks, &w.CPUUtil, &w.MemoryUtil, &w.LastHeartbeat)
+	).Scan(&w.ID, &w.CPU, &w.Memory, &w.GPU, &modelsJSON, &toolsJSON, &backendsJSON, &w.Locality, &w.Health, &w.QueueDepth, &w.RunningTasks, &w.CPUUtil, &w.MemoryUtil, &w.LastHeartbeat)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkerRecord{}, false, nil
 	}
@@ -345,12 +350,15 @@ func (p *PostgresStore) GetWorker(ctx context.Context, workerID string) (WorkerR
 	if err := json.Unmarshal([]byte(toolsJSON), &w.Tools); err != nil {
 		return WorkerRecord{}, false, err
 	}
+	if err := json.Unmarshal([]byte(backendsJSON), &w.Backends); err != nil {
+		return WorkerRecord{}, false, err
+	}
 	return w, true, nil
 }
 
 func (p *PostgresStore) ListWorkers(ctx context.Context) ([]WorkerRecord, error) {
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT id, cpu, memory, gpu, models_json, tools_json, locality, health, queue_depth, running_tasks, cpu_util, memory_util, last_heartbeat
+		`SELECT id, cpu, memory, gpu, models_json, tools_json, backends_json, locality, health, queue_depth, running_tasks, cpu_util, memory_util, last_heartbeat
 		 FROM workers`,
 	)
 	if err != nil {
@@ -360,14 +368,17 @@ func (p *PostgresStore) ListWorkers(ctx context.Context) ([]WorkerRecord, error)
 	out := make([]WorkerRecord, 0, 64)
 	for rows.Next() {
 		var w WorkerRecord
-		var modelsJSON, toolsJSON string
-		if err := rows.Scan(&w.ID, &w.CPU, &w.Memory, &w.GPU, &modelsJSON, &toolsJSON, &w.Locality, &w.Health, &w.QueueDepth, &w.RunningTasks, &w.CPUUtil, &w.MemoryUtil, &w.LastHeartbeat); err != nil {
+		var modelsJSON, toolsJSON, backendsJSON string
+		if err := rows.Scan(&w.ID, &w.CPU, &w.Memory, &w.GPU, &modelsJSON, &toolsJSON, &backendsJSON, &w.Locality, &w.Health, &w.QueueDepth, &w.RunningTasks, &w.CPUUtil, &w.MemoryUtil, &w.LastHeartbeat); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(modelsJSON), &w.Models); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(toolsJSON), &w.Tools); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(backendsJSON), &w.Backends); err != nil {
 			return nil, err
 		}
 		out = append(out, w)

@@ -367,6 +367,13 @@ Minimal GitHub Actions step:
 4. Use MinIO/S3 for durable artifacts.
 5. Use OpenAI-compatible mode only when minimizing migration effort from existing SDK-based apps.
 
+For locality-aware scale with Ollama:
+
+1. Prefer per-worker/node-local Ollama endpoints over a single shared Ollama service.
+2. Advertise worker backend capabilities (`SPLAI_WORKER_BACKENDS=ollama`).
+3. Prefetch target models to workers before `llm_inference` workload spikes.
+4. Keep scheduler backend/model affinity enabled so `llm_inference` tasks land on compatible workers.
+
 ## Related docs
 
 - `/Users/mchenetz/git/SPLAI/docs/reference/quickstart.md`

@@ -43,6 +43,7 @@ type WorkerRecord struct {
 	GPU           bool
 	Models        []string
 	Tools         []string
+	Backends      []string
 	Locality      string
 	Health        string
 	QueueDepth    int

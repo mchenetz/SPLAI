@@ -82,6 +82,7 @@ type RegisterWorkerRequest struct {
 	GPU      bool     `json:"gpu"`
 	Models   []string `json:"models"`
 	Tools    []string `json:"tools"`
+	Backends []string `json:"backends,omitempty"`
 	Locality string   `json:"locality,omitempty"`
 }
 

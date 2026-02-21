@@ -35,6 +35,9 @@ spec:
               value: {{ .Values.worker.heartbeatSeconds | quote }}
             - name: SPLAI_POLL_MILLIS
               value: {{ .Values.worker.pollMillis | quote }}
+{{- with .Values.worker.extraEnv }}
+{{ toYaml . | indent 12 }}
+{{- end }}
           volumeMounts:
             - name: artifact-dir
               mountPath: {{ .Values.worker.artifactRoot | quote }}

@@ -344,6 +344,7 @@ func (e *Engine) RegisterWorker(req splaiapi.RegisterWorkerRequest) error {
 		GPU:           req.GPU,
 		Models:        req.Models,
 		Tools:         req.Tools,
+		Backends:      normalizeBackends(req.Backends),
 		Locality:      req.Locality,
 		Health:        "healthy",
 		LastHeartbeat: time.Now().UTC(),
@@ -578,6 +579,21 @@ func (e *Engine) bestWorkerForTask(ctx context.Context, job state.JobRecord, tas
 		return "", 0, err
 	}
 	targetWorker := strings.TrimSpace(task.Inputs["_target_worker"])
+	requiredBackend := normalizeBackend(task.Inputs["backend"])
+	requiredModel := strings.TrimSpace(task.Inputs["model"])
+	llmTask := task.Type == "llm_inference"
+	hasBackendInventory := false
+	hasModelInventory := false
+	if llmTask {
+		for _, w := range workers {
+			if workerHasBackendInventory(w) {
+				hasBackendInventory = true
+			}
+			if len(w.Models) > 0 {
+				hasModelInventory = true
+			}
+		}
+	}
 	tenantRunning, _ := e.store.CountTasksByTenantStatus(ctx, job.Tenant, JobRunning)
 	bestID := ""
 	bestScore := math.Inf(-1)
@@ -591,6 +607,12 @@ func (e *Engine) bestWorkerForTask(ctx context.Context, job state.JobRecord, tas
 			continue
 		}
 		if parseBool(task.Inputs["_requires_gpu"]) && !w.GPU {
+			continue
+		}
+		if llmTask && requiredBackend != "" && hasBackendInventory && !workerSupportsBackend(w, requiredBackend) {
+			continue
+		}
+		if llmTask && requiredModel != "" && hasModelInventory && !contains(w.Models, requiredModel) {
 			continue
 		}
 		score := e.computeWorkerScore(task, w, tenantRunning, w.RunningTasks)
@@ -607,6 +629,69 @@ func (e *Engine) bestWorkerForTask(ctx context.Context, job state.JobRecord, tas
 		}
 	}
 	return bestID, bestScore, nil
+}
+
+func normalizeBackend(in string) string {
+	switch strings.ToLower(strings.TrimSpace(in)) {
+	case "remote-api":
+		return "remote_api"
+	case "llamacpp":
+		return "llama.cpp"
+	default:
+		return strings.ToLower(strings.TrimSpace(in))
+	}
+}
+
+func normalizeBackends(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(in))
+	seen := map[string]struct{}{}
+	for _, b := range in {
+		nb := normalizeBackend(b)
+		if nb == "" {
+			continue
+		}
+		if _, ok := seen[nb]; ok {
+			continue
+		}
+		seen[nb] = struct{}{}
+		out = append(out, nb)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func workerHasBackendInventory(w state.WorkerRecord) bool {
+	if len(w.Backends) > 0 {
+		return true
+	}
+	for _, t := range w.Tools {
+		switch normalizeBackend(t) {
+		case "ollama", "vllm", "llama.cpp", "remote_api":
+			return true
+		}
+	}
+	return false
+}
+
+func workerSupportsBackend(w state.WorkerRecord, backend string) bool {
+	backend = normalizeBackend(backend)
+	if backend == "" {
+		return true
+	}
+	for _, b := range w.Backends {
+		if normalizeBackend(b) == backend {
+			return true
+		}
+	}
+	for _, t := range w.Tools {
+		if normalizeBackend(t) == backend {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) computeWorkerScore(task state.TaskRecord, w state.WorkerRecord, tenantRunning, liveRunning int) float64 {

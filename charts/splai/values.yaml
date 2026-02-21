@@ -47,6 +47,7 @@ worker:
     repository: ghcr.io/mchenetz/splai-worker-agent
     tag: latest
     pullPolicy: IfNotPresent
+  extraEnv: []
   artifactRoot: /var/lib/splai/artifacts
   volume:
     type: emptyDir

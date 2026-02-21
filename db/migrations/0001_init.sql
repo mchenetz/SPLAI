@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS workers (
   gpu BOOLEAN NOT NULL,
   models_json TEXT NOT NULL,
   tools_json TEXT NOT NULL,
+  backends_json TEXT NOT NULL DEFAULT '[]',
   locality TEXT NOT NULL DEFAULT '',
   health TEXT NOT NULL DEFAULT 'healthy',
   queue_depth INT NOT NULL DEFAULT 0,
