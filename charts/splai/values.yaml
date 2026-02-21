@@ -42,6 +42,9 @@ worker:
     tag: latest
     pullPolicy: IfNotPresent
   artifactRoot: /var/lib/splai/artifacts
+  volume:
+    type: emptyDir
+    hostPath: /var/lib/splai/artifacts
   maxParallelTasks: "2"
   heartbeatSeconds: "5"
   pollMillis: "1500"

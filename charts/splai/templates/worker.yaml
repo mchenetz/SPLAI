@@ -40,7 +40,12 @@ spec:
               mountPath: {{ .Values.worker.artifactRoot | quote }}
       volumes:
         - name: artifact-dir
+{{- $volType := default "emptyDir" .Values.worker.volume.type }}
+{{- if eq $volType "hostPath" }}
           hostPath:
-            path: {{ .Values.worker.artifactRoot | quote }}
+            path: {{ default .Values.worker.artifactRoot .Values.worker.volume.hostPath | quote }}
             type: DirectoryOrCreate
+{{- else }}
+          emptyDir: {}
+{{- end }}
 {{- end }}
