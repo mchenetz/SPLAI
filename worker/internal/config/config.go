@@ -7,25 +7,33 @@ import (
 )
 
 type Config struct {
-	WorkerID            string
-	ControlPlaneBaseURL string
-	APIToken            string
-	MaxParallelTasks    int
-	HeartbeatInterval   time.Duration
-	PollInterval        time.Duration
-	ArtifactRoot        string
-	ModelCacheDir       string
-	ArtifactBackend     string
-	MinIOEndpoint       string
-	MinIOAccessKey      string
-	MinIOSecretKey      string
-	MinIOBucket         string
-	MinIOUseSSL         bool
-	OllamaBaseURL       string
-	VLLMBaseURL         string
-	LlamaCPPBaseURL     string
-	RemoteAPIBaseURL    string
-	RemoteAPIKey        string
+	WorkerID             string
+	ControlPlaneBaseURL  string
+	APIToken             string
+	MaxParallelTasks     int
+	HeartbeatInterval    time.Duration
+	PollInterval         time.Duration
+	ArtifactRoot         string
+	ModelCacheDir        string
+	ArtifactBackend      string
+	MinIOEndpoint        string
+	MinIOAccessKey       string
+	MinIOSecretKey       string
+	MinIOBucket          string
+	MinIOUseSSL          bool
+	OllamaBaseURL        string
+	VLLMBaseURL          string
+	LlamaCPPBaseURL      string
+	RemoteAPIBaseURL     string
+	RemoteAPIKey         string
+	EmbeddingBackend     string
+	EmbeddingModel       string
+	EmbeddingDimension   int
+	EmbeddingHTTPRetries int
+	RetrievalBackend     string
+	RetrievalBaseURL     string
+	RetrievalAPIKey      string
+	RetrievalHTTPRetries int
 }
 
 func FromEnv() Config {
@@ -48,27 +56,43 @@ func FromEnv() Config {
 	llamaCPPBaseURL := getenv("SPLAI_LLAMACPP_BASE_URL", "")
 	remoteAPIBaseURL := getenv("SPLAI_REMOTE_API_BASE_URL", "")
 	remoteAPIKey := getenv("SPLAI_REMOTE_API_KEY", "")
+	embeddingBackend := getenv("SPLAI_EMBEDDING_BACKEND", "local")
+	embeddingModel := getenv("SPLAI_EMBEDDING_MODEL", "nomic-embed-text")
+	embeddingDimension := getenvInt("SPLAI_EMBEDDING_DIMENSION", 384)
+	embeddingHTTPRetries := getenvInt("SPLAI_EMBEDDING_HTTP_RETRIES", 2)
+	retrievalBackend := getenv("SPLAI_RETRIEVAL_BACKEND", "local")
+	retrievalBaseURL := getenv("SPLAI_RETRIEVAL_BASE_URL", "")
+	retrievalAPIKey := getenv("SPLAI_RETRIEVAL_API_KEY", "")
+	retrievalHTTPRetries := getenvInt("SPLAI_RETRIEVAL_HTTP_RETRIES", 2)
 
 	return Config{
-		WorkerID:            workerID,
-		ControlPlaneBaseURL: baseURL,
-		APIToken:            apiToken,
-		MaxParallelTasks:    maxTasks,
-		HeartbeatInterval:   time.Duration(hbSec) * time.Second,
-		PollInterval:        time.Duration(pollMs) * time.Millisecond,
-		ArtifactRoot:        artifactRoot,
-		ModelCacheDir:       modelCacheDir,
-		ArtifactBackend:     artifactBackend,
-		MinIOEndpoint:       minioEndpoint,
-		MinIOAccessKey:      minioAccessKey,
-		MinIOSecretKey:      minioSecretKey,
-		MinIOBucket:         minioBucket,
-		MinIOUseSSL:         minioUseSSL,
-		OllamaBaseURL:       ollamaBaseURL,
-		VLLMBaseURL:         vllmBaseURL,
-		LlamaCPPBaseURL:     llamaCPPBaseURL,
-		RemoteAPIBaseURL:    remoteAPIBaseURL,
-		RemoteAPIKey:        remoteAPIKey,
+		WorkerID:             workerID,
+		ControlPlaneBaseURL:  baseURL,
+		APIToken:             apiToken,
+		MaxParallelTasks:     maxTasks,
+		HeartbeatInterval:    time.Duration(hbSec) * time.Second,
+		PollInterval:         time.Duration(pollMs) * time.Millisecond,
+		ArtifactRoot:         artifactRoot,
+		ModelCacheDir:        modelCacheDir,
+		ArtifactBackend:      artifactBackend,
+		MinIOEndpoint:        minioEndpoint,
+		MinIOAccessKey:       minioAccessKey,
+		MinIOSecretKey:       minioSecretKey,
+		MinIOBucket:          minioBucket,
+		MinIOUseSSL:          minioUseSSL,
+		OllamaBaseURL:        ollamaBaseURL,
+		VLLMBaseURL:          vllmBaseURL,
+		LlamaCPPBaseURL:      llamaCPPBaseURL,
+		RemoteAPIBaseURL:     remoteAPIBaseURL,
+		RemoteAPIKey:         remoteAPIKey,
+		EmbeddingBackend:     embeddingBackend,
+		EmbeddingModel:       embeddingModel,
+		EmbeddingDimension:   embeddingDimension,
+		EmbeddingHTTPRetries: embeddingHTTPRetries,
+		RetrievalBackend:     retrievalBackend,
+		RetrievalBaseURL:     retrievalBaseURL,
+		RetrievalAPIKey:      retrievalAPIKey,
+		RetrievalHTTPRetries: retrievalHTTPRetries,
 	}
 }
 

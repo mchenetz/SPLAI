@@ -196,6 +196,77 @@ func TestTaskTimeoutRetriesWithBackoffAndThenFails(t *testing.T) {
 	}
 }
 
+func TestReportTaskResultRetrySuccessKeepsJobRunningUntilAllTasksDone(t *testing.T) {
+	e := NewEngine(state.NewMemoryStore(), state.NewMemoryQueue(), Options{QueueBackend: "memory"})
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-retry-fix",
+		CPU:      8,
+		Memory:   "16Gi",
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker: %v", err)
+	}
+
+	dag := planner.DAG{
+		DAGID: "dag-retry-fix",
+		Tasks: []planner.Task{
+			{TaskID: "t1", Type: "llm_inference", Inputs: map[string]string{"prompt": "first"}, TimeoutSec: 30, MaxRetries: 1},
+			{TaskID: "t2", Type: "llm_inference", Inputs: map[string]string{"prompt": "second"}, TimeoutSec: 30, MaxRetries: 1},
+		},
+	}
+	if err := e.AddJob("job-retry-fix", "tenant-a", "chat", "retry", "enterprise-default", "interactive", "internal", "m-a", "", dag); err != nil {
+		t.Fatalf("add job: %v", err)
+	}
+
+	first, err := e.PollAssignments("worker-retry-fix", 1)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("expected first assignment, err=%v len=%d", err, len(first))
+	}
+	firstTaskID := first[0].TaskID
+
+	if err := e.ReportTaskResult(splaiapi.ReportTaskResultRequest{
+		WorkerID:       "worker-retry-fix",
+		JobID:          first[0].JobID,
+		TaskID:         firstTaskID,
+		LeaseID:        first[0].LeaseID,
+		IdempotencyKey: "retry-fail-1",
+		Status:         JobFailed,
+		Error:          "transient",
+	}); err != nil {
+		t.Fatalf("report failed: %v", err)
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+	second, err := e.PollAssignments("worker-retry-fix", 1)
+	if err != nil || len(second) != 1 {
+		t.Fatalf("expected retry assignment, err=%v len=%d", err, len(second))
+	}
+	if second[0].TaskID != firstTaskID {
+		t.Fatalf("expected retry on %s, got %s", firstTaskID, second[0].TaskID)
+	}
+
+	if err := e.ReportTaskResult(splaiapi.ReportTaskResultRequest{
+		WorkerID:          "worker-retry-fix",
+		JobID:             second[0].JobID,
+		TaskID:            second[0].TaskID,
+		LeaseID:           second[0].LeaseID,
+		IdempotencyKey:    "retry-ok-1",
+		Status:            JobCompleted,
+		OutputArtifactURI: "artifact://job-retry-fix/t1/output.json",
+		DurationMillis:    1,
+	}); err != nil {
+		t.Fatalf("report completed retry: %v", err)
+	}
+
+	job, ok, err := e.GetJob("job-retry-fix")
+	if err != nil || !ok {
+		t.Fatalf("get job: ok=%v err=%v", ok, err)
+	}
+	if job.Status != JobRunning {
+		t.Fatalf("expected running status after retry success with remaining work, got %s", job.Status)
+	}
+}
+
 func TestArchiveJobFromTerminalState(t *testing.T) {
 	e := NewEngine(state.NewMemoryStore(), state.NewMemoryQueue(), Options{QueueBackend: "memory"})
 	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{

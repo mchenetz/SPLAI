@@ -873,6 +873,14 @@ func (e *Engine) ReportTaskResult(req splaiapi.ReportTaskResultRequest) error {
 		job.Status = JobCompleted
 		job.Message = "all tasks completed"
 		job.ResultArtifactURI = lastOutput
+	} else {
+		job.Status = JobRunning
+		if task.Status == JobCompleted && strings.HasPrefix(job.Message, "retrying task ") {
+			job.Message = "in progress"
+		}
+		if strings.TrimSpace(job.Message) == "" {
+			job.Message = "in progress"
+		}
 	}
 	job.UpdatedAt = time.Now().UTC()
 	return e.store.UpdateJob(ctx, job)

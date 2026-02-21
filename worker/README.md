@@ -32,6 +32,14 @@ The worker agent is designed as a long-running process that:
 - `SPLAI_MODEL_CACHE_DIR` (default `${SPLAI_ARTIFACT_ROOT}/models`): local model cache root used for `model_download` and optional auto-install behavior.
 - `SPLAI_API_TOKEN` (optional): bearer token sent as `X-SPLAI-Token` for register/heartbeat/assignment/report requests when control-plane auth is enabled.
 - `HF_TOKEN` (optional): token passed through to `hf` / `huggingface-cli` / `git` model download flows for private Hugging Face repos.
+- `SPLAI_EMBEDDING_BACKEND` (default `local`): embedding backend (`local`, `ollama`, `vllm`, `remote_api`).
+- `SPLAI_EMBEDDING_MODEL` (default `nomic-embed-text`): default embedding model ID.
+- `SPLAI_EMBEDDING_DIMENSION` (default `384`): default local embedding vector size when task input does not override it.
+- `SPLAI_EMBEDDING_HTTP_RETRIES` (default `2`): retry count for embedding backend HTTP calls.
+- `SPLAI_RETRIEVAL_BACKEND` (default `local`): retrieval backend (`local` or `remote_api`).
+- `SPLAI_RETRIEVAL_BASE_URL` (optional): remote retrieval service base URL when `SPLAI_RETRIEVAL_BACKEND=remote_api`.
+- `SPLAI_RETRIEVAL_API_KEY` (optional): bearer API key for remote retrieval requests.
+- `SPLAI_RETRIEVAL_HTTP_RETRIES` (default `2`): retry count for remote retrieval HTTP calls.
 
 ## Worker container image tools
 
@@ -57,3 +65,12 @@ These are installed via `packaging/worker/Dockerfile` and published in CI by `.g
 - `embedding`
 - `retrieval`
 - `aggregation`
+
+## Aggregation inputs
+
+The `aggregation` task supports structured reduction over dependency artifacts and inline items:
+
+- `dep:<task_id>:output_uri`: dependency artifact URI(s), typically injected by scheduler.
+- `items_json`: optional inline JSON array of objects to include as aggregation sources.
+- `required_fields` or `required_fields_json`: required keys that must exist in merged output.
+- `strict_dependencies` (default `true`): fail if dependency artifact cannot be loaded.
