@@ -1,0 +1,20 @@
+# Portworx-oriented example values for SPLAI.
+# Adjust image tags and sizes for your environment.
+
+postgres:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: px-csi-db
+
+worker:
+  volume:
+    type: ephemeralPVC
+    ephemeralPVC:
+      size: 30Gi
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: px-csi-worker

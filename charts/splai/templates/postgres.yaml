@@ -41,6 +41,17 @@ spec:
 {{- end }}
           ports:
             - containerPort: 5432
+          volumeMounts:
+            - name: postgres-data
+              mountPath: {{ .Values.postgres.dataMountPath | quote }}
+      volumes:
+        - name: postgres-data
+{{- if .Values.postgres.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "splai.fullname" . }}-postgres
+{{- else }}
+          emptyDir: {}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -53,4 +64,20 @@ spec:
     - name: postgres
       port: 5432
       targetPort: 5432
+{{- if .Values.postgres.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "splai.fullname" . }}-postgres
+spec:
+  accessModes:
+{{ toYaml .Values.postgres.persistence.accessModes | indent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size | quote }}
+{{- if .Values.postgres.persistence.storageClassName }}
+  storageClassName: {{ .Values.postgres.persistence.storageClassName | quote }}
+{{- end }}
+{{- end }}
 {{- end }}

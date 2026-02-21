@@ -51,6 +51,11 @@ worker:
   volume:
     type: emptyDir
     hostPath: /var/lib/splai/artifacts
+    ephemeralPVC:
+      size: 20Gi
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: ""
   maxParallelTasks: "2"
   heartbeatSeconds: "5"
   pollMillis: "1500"
@@ -58,6 +63,7 @@ worker:
 postgres:
   enabled: true
   flavor: openshift
+  dataMountPath: /var/lib/pgsql/data
   image:
     repository: quay.io/sclorg/postgresql-16-c9s
     tag: latest
@@ -69,6 +75,9 @@ postgres:
   persistence:
     enabled: false
     size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""
 
 redis:
   enabled: true

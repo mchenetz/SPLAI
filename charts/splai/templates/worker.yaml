@@ -45,6 +45,18 @@ spec:
           hostPath:
             path: {{ default .Values.worker.artifactRoot .Values.worker.volume.hostPath | quote }}
             type: DirectoryOrCreate
+{{- else if eq $volType "ephemeralPVC" }}
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+{{ toYaml .Values.worker.volume.ephemeralPVC.accessModes | indent 18 }}
+                resources:
+                  requests:
+                    storage: {{ .Values.worker.volume.ephemeralPVC.size | quote }}
+{{- if .Values.worker.volume.ephemeralPVC.storageClassName }}
+                storageClassName: {{ .Values.worker.volume.ephemeralPVC.storageClassName | quote }}
+{{- end }}
 {{- else }}
           emptyDir: {}
 {{- end }}
