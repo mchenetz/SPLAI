@@ -51,9 +51,10 @@ worker:
 
 postgres:
   enabled: true
+  flavor: openshift
   image:
-    repository: postgres
-    tag: "16"
+    repository: quay.io/sclorg/postgresql-16-c9s
+    tag: latest
     pullPolicy: IfNotPresent
   auth:
     username: splai

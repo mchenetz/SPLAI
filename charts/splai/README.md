@@ -28,6 +28,16 @@ Worker volume mode:
   - `worker.volume.type=hostPath`
   - `worker.volume.hostPath=/var/lib/splai/artifacts`
 
+Postgres image mode:
+
+- Default is OpenShift-compatible:
+  - `postgres.flavor=openshift`
+  - `postgres.image.repository=quay.io/sclorg/postgresql-16-c9s`
+- Optional upstream postgres mode:
+  - `postgres.flavor=upstream`
+  - `postgres.image.repository=postgres`
+  - `postgres.image.tag=16`
+
 Example (force hostPath):
 
 ```bash
