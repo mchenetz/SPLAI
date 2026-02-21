@@ -256,3 +256,4 @@ SPLAI_API_TOKENS='operator-token:operator|metrics,tenant-a-token:tenant:tenant-a
 - Architecture: `docs/architecture/kubernetes-crd-native.md`
 - Persistent mode: `docs/reference/persistent-control-plane.md`
 - Complete reference: `docs/reference/complete-operations-reference.md`
+- Build/release guide: `docs/reference/build-release-registry-helm.md`

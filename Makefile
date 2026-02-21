@@ -1,4 +1,4 @@
-.PHONY: build test proto infra-up infra-down build-worker build-splaictl install-worker helm-lint
+.PHONY: build test proto infra-up infra-down build-worker build-splaictl install-worker helm-lint helm-template helm-package helm-assets
 
 build:
 	go build ./...
@@ -28,3 +28,13 @@ infra-down:
 
 helm-lint:
 	helm lint charts/splai
+
+helm-template:
+	mkdir -p dist/helm
+	helm template splai charts/splai > dist/helm/splai-manifests.yaml
+
+helm-package:
+	mkdir -p dist/charts
+	helm package charts/splai --destination dist/charts
+
+helm-assets: helm-lint helm-template helm-package
