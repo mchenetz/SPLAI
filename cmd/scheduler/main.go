@@ -161,6 +161,19 @@ func main() {
 			writeJSON(w, http.StatusOK, map[string]any{"job_id": jobID, "tasks": tasks})
 			return
 		}
+		if sub == "archive" {
+			if r.Method != http.MethodPost {
+				writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+				return
+			}
+			accepted, err := engine.ArchiveJob(jobID)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"accepted": accepted})
+			return
+		}
 		if sub != "" {
 			writeError(w, http.StatusNotFound, "job subresource not found")
 			return

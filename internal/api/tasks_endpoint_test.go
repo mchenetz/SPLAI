@@ -53,8 +53,8 @@ func TestJobTasksEndpointHandler(t *testing.T) {
 		t.Fatalf("expected 1 task got %d", len(tasksBefore.Tasks))
 	}
 	before := tasksBefore.Tasks[0]
-	if before.Status != scheduler.JobRunning {
-		t.Fatalf("expected running status got %s", before.Status)
+	if before.Status != scheduler.JobRunning && before.Status != scheduler.JobAssigned {
+		t.Fatalf("expected assigned/running status got %s", before.Status)
 	}
 	if before.Attempt != 1 {
 		t.Fatalf("expected attempt=1 got %d", before.Attempt)
@@ -143,8 +143,8 @@ func TestJobTasksEndpointFilteringAndPagination(t *testing.T) {
 	if runningByWorker.Total != 1 || runningByWorker.Returned != 1 {
 		t.Fatalf("expected one task for worker filter, got total=%d returned=%d", runningByWorker.Total, runningByWorker.Returned)
 	}
-	if runningByWorker.Tasks[0].Status != scheduler.JobRunning {
-		t.Fatalf("expected running task for worker filter, got %s", runningByWorker.Tasks[0].Status)
+	if runningByWorker.Tasks[0].Status != scheduler.JobRunning && runningByWorker.Tasks[0].Status != scheduler.JobAssigned {
+		t.Fatalf("expected assigned/running task for worker filter, got %s", runningByWorker.Tasks[0].Status)
 	}
 
 	var paged splaiapi.JobTasksResponse

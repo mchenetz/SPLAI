@@ -114,8 +114,8 @@ func TestJobTasksEndpoint(t *testing.T) {
 	if len(tasksBefore.Tasks) != 1 {
 		t.Fatalf("expected 1 task in tasks endpoint, got %d", len(tasksBefore.Tasks))
 	}
-	if tasksBefore.Tasks[0].Status != scheduler.JobRunning {
-		t.Fatalf("expected running task status, got %s", tasksBefore.Tasks[0].Status)
+	if tasksBefore.Tasks[0].Status != scheduler.JobRunning && tasksBefore.Tasks[0].Status != scheduler.JobAssigned {
+		t.Fatalf("expected assigned/running task status, got %s", tasksBefore.Tasks[0].Status)
 	}
 	if tasksBefore.Tasks[0].Attempt != 1 {
 		t.Fatalf("expected attempt 1, got %d", tasksBefore.Tasks[0].Attempt)

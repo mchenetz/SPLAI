@@ -141,7 +141,7 @@ func (m *MemoryStore) ListExpiredLeasedTasks(_ context.Context, now time.Time) (
 	out := make([]TaskRecord, 0)
 	for _, byID := range m.tasks {
 		for _, task := range byID {
-			if task.Status != "Running" || task.LeaseID == "" {
+			if (task.Status != "Running" && task.Status != "Assigned") || task.LeaseID == "" {
 				continue
 			}
 			if task.LeaseExpires.IsZero() || !task.LeaseExpires.Before(now) {

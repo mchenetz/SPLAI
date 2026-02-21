@@ -20,4 +20,10 @@ func TestCompileWithModes(t *testing.T) {
 	if hybrid.Tasks[len(hybrid.Tasks)-1].Type != "aggregation" {
 		t.Fatalf("expected hybrid terminal aggregation task")
 	}
+	if template.Tasks[0].Resources == nil || template.Tasks[0].Resources.CPU <= 0 {
+		t.Fatalf("expected planner to emit task resources")
+	}
+	if llm.Tasks[0].Resources == nil || llm.Tasks[0].Resources.Memory == "" {
+		t.Fatalf("expected llm planner mode to emit task resource memory")
+	}
 }

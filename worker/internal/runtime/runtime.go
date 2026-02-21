@@ -10,11 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example/splai/internal/observability"
 	"github.com/example/splai/pkg/splaiapi"
 	"github.com/example/splai/worker/internal/config"
 	"github.com/example/splai/worker/internal/executor"
 	"github.com/example/splai/worker/internal/heartbeat"
 	"github.com/example/splai/worker/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Runtime struct {
@@ -53,6 +55,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 }
 
 func (r *Runtime) pollAndRun(ctx context.Context) error {
+	ctx, span := observability.StartSpan(ctx, "worker.poll_assignments",
+		attribute.String("worker.id", r.cfg.WorkerID),
+		attribute.Int("max_tasks", r.cfg.MaxParallelTasks),
+	)
+	defer span.End()
 	url := strings.TrimRight(r.cfg.ControlPlaneBaseURL, "/") + "/v1/workers/" + r.cfg.WorkerID + "/assignments?max_tasks=" + intToString(r.cfg.MaxParallelTasks)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -77,9 +84,23 @@ func (r *Runtime) pollAndRun(ctx context.Context) error {
 
 	r.hb.SetStats(0, len(result.Assignments))
 	for _, a := range result.Assignments {
+		taskCtx, taskSpan := observability.StartSpan(ctx, "worker.execute_task",
+			attribute.String("worker.id", r.cfg.WorkerID),
+			attribute.String("job.id", a.JobID),
+			attribute.String("task.id", a.TaskID),
+			attribute.String("task.type", a.Type),
+		)
 		r.hb.SetStats(1, 0)
+		_ = r.report(taskCtx, splaiapi.ReportTaskResultRequest{
+			WorkerID:       r.cfg.WorkerID,
+			JobID:          a.JobID,
+			TaskID:         a.TaskID,
+			LeaseID:        a.LeaseID,
+			IdempotencyKey: buildIdempotencyKey(r.cfg.WorkerID, a.JobID, a.TaskID, a.Attempt) + ":running",
+			Status:         "Running",
+		})
 		started := time.Now()
-		artifactURI, runErr := r.exec.Run(ctx, executor.Task{JobID: a.JobID, TaskID: a.TaskID, Type: a.Type, Input: a.Inputs})
+		artifactURI, runErr := r.exec.Run(taskCtx, executor.Task{JobID: a.JobID, TaskID: a.TaskID, Type: a.Type, Input: a.Inputs})
 		duration := time.Since(started)
 
 		report := splaiapi.ReportTaskResultRequest{
@@ -101,7 +122,18 @@ func (r *Runtime) pollAndRun(ctx context.Context) error {
 			log.Printf("report failed job=%s task=%s: %v", a.JobID, a.TaskID, err)
 		}
 		r.tel.Incr("worker.task.executed")
+		observability.Default.SetGauge("worker_task_duration_ms", map[string]string{
+			"worker_id": r.cfg.WorkerID,
+			"task_type": a.Type,
+		}, float64(duration.Milliseconds()))
+		if runErr != nil {
+			observability.Default.IncCounter("worker_task_failures_total", map[string]string{
+				"worker_id": r.cfg.WorkerID,
+				"task_type": a.Type,
+			}, 1)
+		}
 		r.hb.SetStats(0, 0)
+		taskSpan.End()
 	}
 	return nil
 }

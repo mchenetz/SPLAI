@@ -30,6 +30,7 @@ type Server struct {
 	engine  *scheduler.Engine
 	auth    *authorizer
 	safety  *adminSafety
+	limiter *submitLimiter
 	router  *models.Router
 	compat  bool
 	timeout time.Duration
@@ -53,6 +54,7 @@ func NewServer(p *planner.Compiler, e *scheduler.Engine) *Server {
 		engine:  e,
 		auth:    newAuthorizerFromEnv(),
 		safety:  newAdminSafetyFromEnv(),
+		limiter: newSubmitLimiterFromEnv(),
 		router:  router,
 		compat:  parseEnvBool("SPLAI_OPENAI_COMPAT", false),
 		timeout: timeout,
@@ -143,9 +145,14 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireTenantAction(w, r, tenant, "submit"); !ok {
 		return
 	}
+	if !s.limiter.allow(tenant, time.Now().UTC()) {
+		writeError(w, http.StatusTooManyRequests, "submit rate limit exceeded")
+		return
+	}
 
 	jobID := fmt.Sprintf("job-%d", atomic.AddUint64(&s.seq, 1))
 	dag := s.planner.CompileWithMode(jobID, req.Type, req.Input, req.PlannerMode)
+	dag = injectModelBackend(dag, route.Backend)
 	dag = injectModelInstallTasks(dag, req.Model, req.InstallModelIfMissing)
 	if err := s.engine.AddJob(
 		jobID,
@@ -426,6 +433,7 @@ func (s *Server) runOpenAICompatJob(r *http.Request, model, prompt string) (stri
 	}
 	jobID := fmt.Sprintf("job-%d", atomic.AddUint64(&s.seq, 1))
 	dag := s.planner.CompileWithMode(jobID, "chat", prompt, "template")
+	dag = injectModelBackend(dag, route.Backend)
 	if err := s.engine.AddJob(
 		jobID,
 		tenant,
@@ -630,6 +638,22 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 			resp.Limit = limit
 		}
 		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	if subresource == "archive" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if _, ok := s.requireTenantAction(w, r, job.Tenant, "cancel"); !ok {
+			return
+		}
+		accepted, err := s.engine.ArchiveJob(jobID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"accepted": accepted})
 		return
 	}
 	if subresource != "" {
@@ -1109,6 +1133,25 @@ func injectModelInstallTasks(dag planner.DAG, model string, installIfMissing boo
 		dag.Tasks[i].Inputs["model_source"] = "huggingface"
 		if !containsString(dag.Tasks[i].Dependencies, installTaskID) {
 			dag.Tasks[i].Dependencies = append(dag.Tasks[i].Dependencies, installTaskID)
+		}
+	}
+	return dag
+}
+
+func injectModelBackend(dag planner.DAG, backend string) planner.DAG {
+	backend = strings.TrimSpace(backend)
+	if backend == "" {
+		return dag
+	}
+	for i := range dag.Tasks {
+		if !strings.EqualFold(strings.TrimSpace(dag.Tasks[i].Type), "llm_inference") {
+			continue
+		}
+		if dag.Tasks[i].Inputs == nil {
+			dag.Tasks[i].Inputs = map[string]string{}
+		}
+		if strings.TrimSpace(dag.Tasks[i].Inputs["backend"]) == "" {
+			dag.Tasks[i].Inputs["backend"] = backend
 		}
 	}
 	return dag

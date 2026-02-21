@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,10 +21,12 @@ import (
 
 const (
 	JobQueued    = "Queued"
+	JobAssigned  = "Assigned"
 	JobRunning   = "Running"
 	JobCompleted = "Completed"
 	JobFailed    = "Failed"
 	JobCanceled  = "Canceled"
+	JobArchived  = "Archived"
 )
 
 type Options struct {
@@ -177,8 +180,8 @@ func (e *Engine) AddJob(id, tenant, reqType, input, policyName, priority, dataCl
 			JobID:        id,
 			TaskID:       t.TaskID,
 			Type:         t.Type,
-			Inputs:       t.Inputs,
-			Dependencies: t.Dependencies,
+			Inputs:       cloneStringMap(t.Inputs),
+			Dependencies: append([]string(nil), t.Dependencies...),
 			Status:       JobQueued,
 			MaxRetries:   t.MaxRetries,
 			TimeoutSec:   t.TimeoutSec,
@@ -197,6 +200,20 @@ func (e *Engine) AddJob(id, tenant, reqType, input, policyName, priority, dataCl
 		}
 		if networkIsolation != "" {
 			rec.Inputs["_network_isolation"] = networkIsolation
+		}
+		if t.Resources != nil {
+			if t.Resources.CPU > 0 {
+				rec.Inputs["_resource_cpu"] = strconv.Itoa(t.Resources.CPU)
+			}
+			if strings.TrimSpace(t.Resources.Memory) != "" {
+				rec.Inputs["_resource_memory"] = strings.TrimSpace(t.Resources.Memory)
+			}
+			if t.Resources.GPU {
+				rec.Inputs["_requires_gpu"] = "true"
+			}
+		}
+		if t.Constraints != nil && strings.TrimSpace(t.Constraints.DataLocality) != "" {
+			rec.Inputs["_data_locality"] = strings.TrimSpace(t.Constraints.DataLocality)
 		}
 		tasks = append(tasks, rec)
 		if len(t.Dependencies) == 0 {
@@ -300,6 +317,25 @@ func (e *Engine) CancelJob(jobID string) (bool, error) {
 	return true, nil
 }
 
+func (e *Engine) ArchiveJob(jobID string) (bool, error) {
+	ctx := context.Background()
+	job, ok, err := e.store.GetJob(ctx, jobID)
+	if err != nil || !ok {
+		return false, err
+	}
+	switch job.Status {
+	case JobCompleted, JobFailed, JobCanceled, JobArchived:
+		job.Status = JobArchived
+		job.UpdatedAt = time.Now().UTC()
+		if err := e.store.UpdateJob(ctx, job); err != nil {
+			return false, err
+		}
+		return true, nil
+	default:
+		return false, fmt.Errorf("job %s is not in terminal state", jobID)
+	}
+}
+
 func (e *Engine) RegisterWorker(req splaiapi.RegisterWorkerRequest) error {
 	return e.store.UpsertWorker(context.Background(), state.WorkerRecord{
 		ID:            req.WorkerID,
@@ -326,7 +362,7 @@ func (e *Engine) Heartbeat(workerID string, req splaiapi.HeartbeatRequest) error
 	if err := e.store.UpdateWorkerHeartbeat(ctx, workerID, req.QueueDepth, req.RunningTasks, req.CPUUtil, req.MemoryUtil, req.Health); err != nil {
 		return err
 	}
-	return e.store.ExtendWorkerLeases(ctx, workerID, time.Now().UTC(), e.leaseDuration)
+	return e.extendWorkerLeasesWithTimeout(ctx, workerID, time.Now().UTC())
 }
 
 func (e *Engine) PollAssignments(workerID string, max int) ([]splaiapi.Assignment, error) {
@@ -365,6 +401,19 @@ func (e *Engine) PollAssignments(workerID string, max int) ([]splaiapi.Assignmen
 	if len(claims) == 0 {
 		return nil, nil
 	}
+	sort.SliceStable(claims, func(i, j int) bool {
+		pi := e.claimPriority(ctx, claims[i].Ref)
+		pj := e.claimPriority(ctx, claims[j].Ref)
+		if pi != pj {
+			return pi > pj
+		}
+		ti := e.claimCreatedAt(ctx, claims[i].Ref)
+		tj := e.claimCreatedAt(ctx, claims[j].Ref)
+		if ti.Equal(tj) {
+			return tieHash(taskRefKey(claims[i].Ref), claims[i].ClaimedBy) > tieHash(taskRefKey(claims[j].Ref), claims[j].ClaimedBy)
+		}
+		return ti.Before(tj)
+	})
 
 	readyAssignments := make([]splaiapi.Assignment, 0, len(claims))
 	ackClaims := make([]state.QueueClaim, 0, len(claims))
@@ -414,6 +463,9 @@ func (e *Engine) tryAssign(ctx context.Context, workerID string, ref state.TaskR
 		return splaiapi.Assignment{}, false, err
 	}
 	if task.Status != JobQueued {
+		return splaiapi.Assignment{}, false, nil
+	}
+	if !task.LeaseExpires.IsZero() && task.LeaseExpires.After(time.Now().UTC()) {
 		return splaiapi.Assignment{}, false, nil
 	}
 	ready, err := e.dependenciesCompleted(ctx, ref.JobID, task.Dependencies)
@@ -491,11 +543,15 @@ func (e *Engine) tryAssign(ctx context.Context, workerID string, ref state.TaskR
 		}
 		assignmentInputs["dep:"+dep+":output_uri"] = depTask.OutputURI
 	}
-	task.Status = JobRunning
+	task.Status = JobAssigned
 	task.WorkerID = workerID
 	task.Attempt++
 	task.LeaseID = newLeaseID(workerID, task.TaskID, task.Attempt, now)
-	task.LeaseExpires = now.Add(e.leaseDuration)
+	leaseExpiry := now.Add(e.leaseDuration)
+	if deadline, ok := taskAttemptDeadline(task, now); ok && deadline.Before(leaseExpiry) {
+		leaseExpiry = deadline
+	}
+	task.LeaseExpires = leaseExpiry
 	task.UpdatedAt = now
 	if err := e.store.UpdateTask(ctx, task); err != nil {
 		return splaiapi.Assignment{}, false, err
@@ -532,6 +588,9 @@ func (e *Engine) bestWorkerForTask(ctx context.Context, job state.JobRecord, tas
 			continue
 		}
 		if strings.EqualFold(w.Health, "unhealthy") {
+			continue
+		}
+		if parseBool(task.Inputs["_requires_gpu"]) && !w.GPU {
 			continue
 		}
 		score := e.computeWorkerScore(task, w, tenantRunning, w.RunningTasks)
@@ -613,6 +672,11 @@ func (e *Engine) tryPreemptLowerPriority(ctx context.Context, worker state.Worke
 	if err != nil {
 		return false, err
 	}
+	assigned, err := e.store.ListTasksByWorkerStatus(ctx, worker.ID, JobAssigned)
+	if err != nil {
+		return false, err
+	}
+	running = append(running, assigned...)
 	if len(running) == 0 {
 		return false, nil
 	}
@@ -679,6 +743,10 @@ func tieHash(taskKey, workerID string) uint32 {
 	return h.Sum32()
 }
 
+func taskRefKey(ref state.TaskRef) string {
+	return ref.JobID + "/" + ref.TaskID
+}
+
 func (e *Engine) ReportTaskResult(req splaiapi.ReportTaskResultRequest) error {
 	ctx := context.Background()
 	ctx, span := observability.StartSpan(ctx, "scheduler.report_task_result",
@@ -696,7 +764,7 @@ func (e *Engine) ReportTaskResult(req splaiapi.ReportTaskResultRequest) error {
 	if err != nil || !ok {
 		return fmt.Errorf("task %s not found", req.TaskID)
 	}
-	if job.Status == JobCanceled {
+	if job.Status == JobCanceled || job.Status == JobArchived {
 		return nil
 	}
 
@@ -714,11 +782,20 @@ func (e *Engine) ReportTaskResult(req splaiapi.ReportTaskResultRequest) error {
 	task.LeaseID = ""
 	task.LeaseExpires = time.Time{}
 
+	if req.Status == JobRunning {
+		task.Status = JobRunning
+		task.WorkerID = req.WorkerID
+		if err := e.store.UpdateTask(ctx, task); err != nil {
+			return err
+		}
+		return nil
+	}
 	if req.Status == JobCompleted {
 		task.Status = JobCompleted
 	} else if task.Attempt <= task.MaxRetries {
 		task.Status = JobQueued
 		task.WorkerID = ""
+		task.LeaseExpires = time.Now().UTC().Add(retryBackoff(task.Attempt))
 		if err := e.queue.Enqueue(ctx, state.TaskRef{JobID: task.JobID, TaskID: task.TaskID}); err != nil {
 			return err
 		}
@@ -807,19 +884,40 @@ func (e *Engine) requeueExpiredLeases(ctx context.Context, now time.Time) error 
 		return err
 	}
 	refs := make([]state.TaskRef, 0, len(expired))
+	affectedJobs := map[string]struct{}{}
 	for _, t := range expired {
-		t.Status = JobQueued
+		affectedJobs[t.JobID] = struct{}{}
+		timedOut := false
+		if start, ok := leaseStartFromID(t.LeaseID); ok && t.TimeoutSec > 0 {
+			timedOut = !start.Add(time.Duration(t.TimeoutSec) * time.Second).After(now)
+		}
+		if timedOut && t.Attempt > t.MaxRetries {
+			t.Status = JobFailed
+			t.Error = fmt.Sprintf("task timed out after %d attempt(s)", t.Attempt)
+		} else {
+			t.Status = JobQueued
+			if timedOut {
+				t.Error = fmt.Sprintf("task timed out, retrying attempt %d", t.Attempt+1)
+				t.LeaseExpires = now.Add(retryBackoff(t.Attempt))
+			} else {
+				t.LeaseExpires = time.Time{}
+			}
+			refs = append(refs, state.TaskRef{JobID: t.JobID, TaskID: t.TaskID})
+		}
 		t.WorkerID = ""
 		t.LeaseID = ""
-		t.LeaseExpires = time.Time{}
 		t.UpdatedAt = now
 		if err := e.store.UpdateTask(ctx, t); err != nil {
 			return err
 		}
-		refs = append(refs, state.TaskRef{JobID: t.JobID, TaskID: t.TaskID})
 	}
 	if len(refs) > 0 {
 		if err := e.queue.EnqueueMany(ctx, refs); err != nil {
+			return err
+		}
+	}
+	for jobID := range affectedJobs {
+		if err := e.reconcileJobStatus(ctx, jobID); err != nil {
 			return err
 		}
 	}
@@ -861,7 +959,7 @@ func newLeaseID(workerID, taskID string, attempt int, now time.Time) string {
 
 func isTerminal(status string) bool {
 	switch status {
-	case JobCompleted, JobFailed, JobCanceled:
+	case JobCompleted, JobFailed, JobCanceled, JobArchived:
 		return true
 	default:
 		return false
@@ -886,4 +984,153 @@ func (e *Engine) appendPolicyAudit(tenant, action string, d policy.Decision, det
 		Details:   msg,
 		CreatedAt: time.Now().UTC(),
 	})
+}
+
+func (e *Engine) claimPriority(ctx context.Context, ref state.TaskRef) int {
+	task, ok, err := e.store.GetTask(ctx, ref.JobID, ref.TaskID)
+	if err != nil || !ok {
+		return 0
+	}
+	return priorityRank(task.Inputs["_priority"])
+}
+
+func (e *Engine) claimCreatedAt(ctx context.Context, ref state.TaskRef) time.Time {
+	task, ok, err := e.store.GetTask(ctx, ref.JobID, ref.TaskID)
+	if err != nil || !ok {
+		return time.Unix(0, 0).UTC()
+	}
+	if task.CreatedAt.IsZero() {
+		return time.Unix(0, 0).UTC()
+	}
+	return task.CreatedAt
+}
+
+func (e *Engine) extendWorkerLeasesWithTimeout(ctx context.Context, workerID string, now time.Time) error {
+	tasksRunning, err := e.store.ListTasksByWorkerStatus(ctx, workerID, JobRunning)
+	if err != nil {
+		return err
+	}
+	tasksAssigned, err := e.store.ListTasksByWorkerStatus(ctx, workerID, JobAssigned)
+	if err != nil {
+		return err
+	}
+	tasks := append(tasksRunning, tasksAssigned...)
+	for _, t := range tasks {
+		if t.LeaseID == "" {
+			continue
+		}
+		if !t.LeaseExpires.IsZero() && !t.LeaseExpires.After(now) {
+			continue
+		}
+		next := now.Add(e.leaseDuration)
+		if deadline, ok := taskAttemptDeadline(t, now); ok && deadline.Before(next) {
+			next = deadline
+		}
+		t.LeaseExpires = next
+		if err := e.store.UpdateTask(ctx, t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func taskAttemptDeadline(task state.TaskRecord, fallback time.Time) (time.Time, bool) {
+	if task.TimeoutSec <= 0 {
+		return time.Time{}, false
+	}
+	start, ok := leaseStartFromID(task.LeaseID)
+	if !ok {
+		start = fallback
+	}
+	return start.Add(time.Duration(task.TimeoutSec) * time.Second), true
+}
+
+func leaseStartFromID(leaseID string) (time.Time, bool) {
+	parts := strings.Split(leaseID, ":")
+	if len(parts) < 4 {
+		return time.Time{}, false
+	}
+	nanos, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+	if err != nil || nanos <= 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(0, nanos).UTC(), true
+}
+
+func retryBackoff(attempt int) time.Duration {
+	if attempt <= 0 {
+		attempt = 1
+	}
+	seconds := 1 << min(attempt-1, 5)
+	return time.Duration(seconds) * time.Second
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func parseBool(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func (e *Engine) reconcileJobStatus(ctx context.Context, jobID string) error {
+	job, ok, err := e.store.GetJob(ctx, jobID)
+	if err != nil || !ok {
+		return err
+	}
+	if job.Status == JobCanceled || job.Status == JobArchived {
+		return nil
+	}
+	tasks, err := e.store.ListTasksByJob(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	completed := 0
+	failed := 0
+	lastOutput := ""
+	for _, t := range tasks {
+		switch t.Status {
+		case JobCompleted:
+			completed++
+			if t.OutputURI != "" {
+				lastOutput = t.OutputURI
+			}
+		case JobFailed:
+			failed++
+		}
+	}
+	switch {
+	case failed > 0:
+		job.Status = JobFailed
+		if job.Message == "" {
+			job.Message = "one or more tasks failed"
+		}
+	case completed == len(tasks) && len(tasks) > 0:
+		job.Status = JobCompleted
+		job.Message = "all tasks completed"
+		job.ResultArtifactURI = lastOutput
+	default:
+		job.Status = JobRunning
+	}
+	job.UpdatedAt = time.Now().UTC()
+	return e.store.UpdateJob(ctx, job)
 }

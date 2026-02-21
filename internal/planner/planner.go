@@ -14,11 +14,23 @@ type Task struct {
 	Dependencies []string          `json:"dependencies,omitempty"`
 	TimeoutSec   int               `json:"timeout_sec,omitempty"`
 	MaxRetries   int               `json:"max_retries,omitempty"`
+	Resources    *TaskResources    `json:"resources,omitempty"`
+	Constraints  *TaskConstraints  `json:"constraints,omitempty"`
 }
 
 type DAG struct {
 	DAGID string `json:"dag_id"`
 	Tasks []Task `json:"tasks"`
+}
+
+type TaskResources struct {
+	CPU    int    `json:"cpu,omitempty"`
+	Memory string `json:"memory,omitempty"`
+	GPU    bool   `json:"gpu,omitempty"`
+}
+
+type TaskConstraints struct {
+	DataLocality string `json:"data_locality,omitempty"`
 }
 
 func NewCompiler() *Compiler {
@@ -59,9 +71,32 @@ func (c *Compiler) compileTemplate(jobID, reqType, input string) DAG {
 		return DAG{
 			DAGID: fmt.Sprintf("%s-dag", jobID),
 			Tasks: []Task{
-				{TaskID: "t1-split", Type: "tool_execution", Inputs: map[string]string{"op": "split", "text": input}, TimeoutSec: 30, MaxRetries: 2},
-				{TaskID: "t2-embed", Type: "embedding", Inputs: map[string]string{"op": "embed"}, Dependencies: []string{"t1-split"}, TimeoutSec: 60, MaxRetries: 2},
-				{TaskID: "t3-summarize", Type: "llm_inference", Inputs: map[string]string{"op": "summarize"}, Dependencies: []string{"t2-embed"}, TimeoutSec: 60, MaxRetries: 2},
+				{
+					TaskID:     "t1-split",
+					Type:       "tool_execution",
+					Inputs:     map[string]string{"op": "split", "text": input},
+					TimeoutSec: 30,
+					MaxRetries: 2,
+					Resources:  &TaskResources{CPU: 1, Memory: "1Gi", GPU: false},
+				},
+				{
+					TaskID:       "t2-embed",
+					Type:         "embedding",
+					Inputs:       map[string]string{"op": "embed"},
+					Dependencies: []string{"t1-split"},
+					TimeoutSec:   60,
+					MaxRetries:   2,
+					Resources:    &TaskResources{CPU: 2, Memory: "2Gi", GPU: false},
+				},
+				{
+					TaskID:       "t3-summarize",
+					Type:         "llm_inference",
+					Inputs:       map[string]string{"op": "summarize"},
+					Dependencies: []string{"t2-embed"},
+					TimeoutSec:   60,
+					MaxRetries:   2,
+					Resources:    &TaskResources{CPU: 2, Memory: "4Gi", GPU: false},
+				},
 			},
 		}
 	}
@@ -69,7 +104,14 @@ func (c *Compiler) compileTemplate(jobID, reqType, input string) DAG {
 	return DAG{
 		DAGID: fmt.Sprintf("%s-dag", jobID),
 		Tasks: []Task{
-			{TaskID: "t1", Type: "llm_inference", Inputs: map[string]string{"prompt": input}, TimeoutSec: 60, MaxRetries: 2},
+			{
+				TaskID:     "t1",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"prompt": input},
+				TimeoutSec: 60,
+				MaxRetries: 2,
+				Resources:  &TaskResources{CPU: 2, Memory: "4Gi", GPU: false},
+			},
 		},
 	}
 }
@@ -86,18 +128,64 @@ func (c *Compiler) compileLLM(jobID, reqType, input string) DAG {
 		return DAG{
 			DAGID: fmt.Sprintf("%s-dag", jobID),
 			Tasks: []Task{
-				{TaskID: "t1-decompose", Type: "llm_inference", Inputs: map[string]string{"op": "decompose", "prompt": input}, TimeoutSec: 45, MaxRetries: 2},
-				{TaskID: "t2-retrieve", Type: "retrieval", Inputs: map[string]string{"op": "retrieve"}, Dependencies: []string{"t1-decompose"}, TimeoutSec: 45, MaxRetries: 2},
-				{TaskID: "t3-reason", Type: "llm_inference", Inputs: map[string]string{"op": "reason"}, Dependencies: []string{"t2-retrieve"}, TimeoutSec: 90, MaxRetries: 2},
-				{TaskID: "t4-report", Type: "aggregation", Inputs: map[string]string{"op": "report"}, Dependencies: []string{"t3-reason"}, TimeoutSec: 45, MaxRetries: 2},
+				{
+					TaskID:     "t1-decompose",
+					Type:       "llm_inference",
+					Inputs:     map[string]string{"op": "decompose", "prompt": input},
+					TimeoutSec: 45,
+					MaxRetries: 2,
+					Resources:  &TaskResources{CPU: 2, Memory: "4Gi", GPU: false},
+				},
+				{
+					TaskID:       "t2-retrieve",
+					Type:         "retrieval",
+					Inputs:       map[string]string{"op": "retrieve"},
+					Dependencies: []string{"t1-decompose"},
+					TimeoutSec:   45,
+					MaxRetries:   2,
+					Resources:    &TaskResources{CPU: 2, Memory: "2Gi", GPU: false},
+				},
+				{
+					TaskID:       "t3-reason",
+					Type:         "llm_inference",
+					Inputs:       map[string]string{"op": "reason"},
+					Dependencies: []string{"t2-retrieve"},
+					TimeoutSec:   90,
+					MaxRetries:   2,
+					Resources:    &TaskResources{CPU: 2, Memory: "4Gi", GPU: false},
+				},
+				{
+					TaskID:       "t4-report",
+					Type:         "aggregation",
+					Inputs:       map[string]string{"op": "report"},
+					Dependencies: []string{"t3-reason"},
+					TimeoutSec:   45,
+					MaxRetries:   2,
+					Resources:    &TaskResources{CPU: 1, Memory: "1Gi", GPU: false},
+				},
 			},
 		}
 	}
 	return DAG{
 		DAGID: fmt.Sprintf("%s-dag", jobID),
 		Tasks: []Task{
-			{TaskID: "t1-decompose", Type: "llm_inference", Inputs: map[string]string{"op": "decompose", "prompt": input}, TimeoutSec: 45, MaxRetries: 2},
-			{TaskID: "t2-respond", Type: "llm_inference", Inputs: map[string]string{"op": "respond"}, Dependencies: []string{"t1-decompose"}, TimeoutSec: 60, MaxRetries: 2},
+			{
+				TaskID:     "t1-decompose",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"op": "decompose", "prompt": input},
+				TimeoutSec: 45,
+				MaxRetries: 2,
+				Resources:  &TaskResources{CPU: 2, Memory: "4Gi", GPU: false},
+			},
+			{
+				TaskID:       "t2-respond",
+				Type:         "llm_inference",
+				Inputs:       map[string]string{"op": "respond"},
+				Dependencies: []string{"t1-decompose"},
+				TimeoutSec:   60,
+				MaxRetries:   2,
+				Resources:    &TaskResources{CPU: 2, Memory: "4Gi", GPU: false},
+			},
 		},
 	}
 }
@@ -115,6 +203,7 @@ func (c *Compiler) compileHybrid(jobID, reqType, input string) DAG {
 		Dependencies: []string{base.Tasks[len(base.Tasks)-1].TaskID},
 		TimeoutSec:   30,
 		MaxRetries:   2,
+		Resources:    &TaskResources{CPU: 1, Memory: "1Gi", GPU: false},
 	})
 	return base
 }

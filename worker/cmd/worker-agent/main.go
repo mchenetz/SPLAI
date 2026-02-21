@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/example/splai/internal/observability"
 	"github.com/example/splai/worker/internal/config"
 	"github.com/example/splai/worker/internal/executor"
 	"github.com/example/splai/worker/internal/heartbeat"
@@ -18,8 +19,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	shutdownTrace, err := observability.InitTracingFromEnv("splai-worker-agent")
+	if err != nil {
+		log.Fatalf("init tracing: %v", err)
+	}
+	defer func() { _ = shutdownTrace(context.Background()) }()
+
 	cfg := config.FromEnv()
-	t := telemetry.NewNop()
+	t := telemetry.New()
 
 	if err := registration.Register(ctx, cfg); err != nil {
 		log.Fatalf("register worker: %v", err)

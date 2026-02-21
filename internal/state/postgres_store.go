@@ -276,7 +276,7 @@ func (p *PostgresStore) CountTasksByTenantStatus(ctx context.Context, tenant, st
 func (p *PostgresStore) ListExpiredLeasedTasks(ctx context.Context, now time.Time) ([]TaskRecord, error) {
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT job_id, task_id, type, inputs_json, dependencies_json, status, worker_id, lease_id, lease_expires_at, attempt, max_retries, timeout_sec, output_uri, error_text, last_report_key, created_at, updated_at
-		 FROM tasks WHERE status='Running' AND lease_id <> '' AND lease_expires_at IS NOT NULL AND lease_expires_at < $1`, now,
+		 FROM tasks WHERE status IN ('Running','Assigned') AND lease_id <> '' AND lease_expires_at IS NOT NULL AND lease_expires_at < $1`, now,
 	)
 	if err != nil {
 		return nil, err

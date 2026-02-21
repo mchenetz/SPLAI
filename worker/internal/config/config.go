@@ -21,6 +21,11 @@ type Config struct {
 	MinIOSecretKey      string
 	MinIOBucket         string
 	MinIOUseSSL         bool
+	OllamaBaseURL       string
+	VLLMBaseURL         string
+	LlamaCPPBaseURL     string
+	RemoteAPIBaseURL    string
+	RemoteAPIKey        string
 }
 
 func FromEnv() Config {
@@ -38,6 +43,11 @@ func FromEnv() Config {
 	minioSecretKey := getenv("SPLAI_MINIO_SECRET_KEY", "")
 	minioBucket := getenv("SPLAI_MINIO_BUCKET", "splai-artifacts")
 	minioUseSSL := getenvBool("SPLAI_MINIO_USE_SSL", false)
+	ollamaBaseURL := getenv("SPLAI_OLLAMA_BASE_URL", "")
+	vllmBaseURL := getenv("SPLAI_VLLM_BASE_URL", "")
+	llamaCPPBaseURL := getenv("SPLAI_LLAMACPP_BASE_URL", "")
+	remoteAPIBaseURL := getenv("SPLAI_REMOTE_API_BASE_URL", "")
+	remoteAPIKey := getenv("SPLAI_REMOTE_API_KEY", "")
 
 	return Config{
 		WorkerID:            workerID,
@@ -54,6 +64,11 @@ func FromEnv() Config {
 		MinIOSecretKey:      minioSecretKey,
 		MinIOBucket:         minioBucket,
 		MinIOUseSSL:         minioUseSSL,
+		OllamaBaseURL:       ollamaBaseURL,
+		VLLMBaseURL:         vllmBaseURL,
+		LlamaCPPBaseURL:     llamaCPPBaseURL,
+		RemoteAPIBaseURL:    remoteAPIBaseURL,
+		RemoteAPIKey:        remoteAPIKey,
 	}
 }
 
