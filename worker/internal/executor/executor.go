@@ -235,22 +235,29 @@ func dirHasContents(path string) bool {
 }
 
 func downloadFromHuggingFace(ctx context.Context, model, targetDir string) error {
-	if _, err := exec.LookPath("hf"); err == nil {
-		cmd := exec.CommandContext(ctx, "hf", "download", model, "--local-dir", targetDir)
+	if p := lookPathWithFallback("hf"); p != "" {
+		cmd := exec.CommandContext(ctx, p, "download", model, "--local-dir", targetDir)
+		cmd.Env = processEnvWithPathFallback()
 		if out, runErr := cmd.CombinedOutput(); runErr != nil {
 			return fmt.Errorf("hf download failed: %v (%s)", runErr, strings.TrimSpace(string(out)))
 		}
 		return nil
 	}
-	if _, err := exec.LookPath("huggingface-cli"); err == nil {
-		cmd := exec.CommandContext(ctx, "huggingface-cli", "download", model, "--local-dir", targetDir, "--local-dir-use-symlinks", "False")
+	if p := lookPathWithFallback("huggingface-cli"); p != "" {
+		cmd := exec.CommandContext(ctx, p, "download", model, "--local-dir", targetDir, "--local-dir-use-symlinks", "False")
+		cmd.Env = processEnvWithPathFallback()
 		if out, runErr := cmd.CombinedOutput(); runErr != nil {
 			return fmt.Errorf("huggingface-cli download failed: %v (%s)", runErr, strings.TrimSpace(string(out)))
 		}
 		return nil
 	}
 	repoURL := "https://huggingface.co/" + model
-	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", repoURL, targetDir)
+	gitPath := lookPathWithFallback("git")
+	if gitPath == "" {
+		return errors.New("no huggingface downloader found (hf, huggingface-cli, git) in PATH")
+	}
+	cmd := exec.CommandContext(ctx, gitPath, "clone", "--depth", "1", repoURL, targetDir)
+	cmd.Env = processEnvWithPathFallback()
 	if out, runErr := cmd.CombinedOutput(); runErr != nil {
 		return fmt.Errorf("git clone fallback failed: %v (%s)", runErr, strings.TrimSpace(string(out)))
 	}
@@ -622,4 +629,41 @@ func cosineSimilarity(a, b []float64) float64 {
 		dot += a[i] * b[i]
 	}
 	return dot
+}
+
+func lookPathWithFallback(bin string) string {
+	if p, err := exec.LookPath(bin); err == nil {
+		return p
+	}
+	for _, dir := range strings.Split(defaultExecPath(), ":") {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		p := filepath.Join(dir, bin)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+func processEnvWithPathFallback() []string {
+	env := os.Environ()
+	hasPath := false
+	for _, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			hasPath = true
+			if strings.TrimSpace(strings.TrimPrefix(e, "PATH=")) == "" {
+				e = "PATH=" + defaultExecPath()
+			}
+		}
+	}
+	if !hasPath {
+		env = append(env, "PATH="+defaultExecPath())
+	}
+	return env
+}
+
+func defaultExecPath() string {
+	return "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"
 }
