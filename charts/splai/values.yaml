@@ -86,9 +86,13 @@ redis:
     tag: "7"
     pullPolicy: IfNotPresent
   dataMountPath: /data
+  securityContextProfile: auto
   podSecurityContext:
-    fsGroup: 0
+    fsGroup: 1001
     fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  openshiftPodSecurityContext:
     seccompProfile:
       type: RuntimeDefault
   containerSecurityContext:

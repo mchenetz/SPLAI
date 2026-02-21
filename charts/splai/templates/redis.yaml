@@ -1,4 +1,11 @@
 {{- if .Values.redis.enabled }}
+{{- $profile := lower (default "auto" .Values.redis.securityContextProfile) }}
+{{- $isOpenShift := .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
+{{- $useOpenShiftProfile := or (eq $profile "openshift") (and (eq $profile "auto") $isOpenShift) }}
+{{- $podSC := .Values.redis.podSecurityContext }}
+{{- if $useOpenShiftProfile }}
+{{- $podSC = .Values.redis.openshiftPodSecurityContext }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,8 +20,10 @@ spec:
       labels:
         app: {{ include "splai.fullname" . }}-redis
     spec:
+      {{- with $podSC }}
       securityContext:
-{{ toYaml .Values.redis.podSecurityContext | indent 8 }}
+{{ toYaml . | indent 8 }}
+      {{- end }}
       containers:
         - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"

@@ -112,9 +112,11 @@ All available values from `charts/splai/values.yaml`:
 | `redis.image.tag` | string | `"7"` | Redis image tag. |
 | `redis.image.pullPolicy` | string | `IfNotPresent` | Redis image pull policy. |
 | `redis.dataMountPath` | string | `/data` | Redis data directory mount path. |
-| `redis.podSecurityContext.fsGroup` | int | `0` | Pod fsGroup used to make mounted data writable in OpenShift-style UID environments. |
+| `redis.securityContextProfile` | string | `auto` | Security profile mode (`auto`, `kubernetes`, `openshift`). In `auto`, OpenShift clusters use the OpenShift profile. |
+| `redis.podSecurityContext.fsGroup` | int | `1001` | Pod fsGroup used for Kubernetes profile to ensure writable data volume. |
 | `redis.podSecurityContext.fsGroupChangePolicy` | string | `OnRootMismatch` | fsGroup permission propagation policy. |
 | `redis.podSecurityContext.seccompProfile.type` | string | `RuntimeDefault` | Pod seccomp profile type. |
+| `redis.openshiftPodSecurityContext.seccompProfile.type` | string | `RuntimeDefault` | OpenShift profile pod seccomp type; omits fixed fsGroup to stay SCC-compatible. |
 | `redis.containerSecurityContext.runAsNonRoot` | bool | `true` | Run redis container as non-root user. |
 | `redis.containerSecurityContext.allowPrivilegeEscalation` | bool | `false` | Disable privilege escalation. |
 | `redis.containerSecurityContext.capabilities.drop` | list | `[ALL]` | Drop all Linux capabilities. |
@@ -254,13 +256,12 @@ helm upgrade --install splai ./charts/splai \
 
 ```yaml
 redis:
+  securityContextProfile: openshift
   volume:
     type: pvc
     size: 8Gi
     storageClassName: px-csi-db
-  podSecurityContext:
-    fsGroup: 0
-    fsGroupChangePolicy: OnRootMismatch
+  openshiftPodSecurityContext:
     seccompProfile:
       type: RuntimeDefault
   containerSecurityContext:
@@ -269,6 +270,18 @@ redis:
     capabilities:
       drop:
         - ALL
+```
+
+### 9) Force Kubernetes security profile for Redis
+
+```yaml
+redis:
+  securityContextProfile: kubernetes
+  podSecurityContext:
+    fsGroup: 1001
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
 ```
 
 `charts/splai/values.portworx.yaml`:
