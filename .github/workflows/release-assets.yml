@@ -110,8 +110,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          make helm-lint
-          make helm-template
+          helm lint charts/splai
+          mkdir -p dist/helm
+          helm template splai charts/splai > dist/helm/splai-manifests.yaml
 
       - name: Build and push container images (multi-arch)
         shell: bash
