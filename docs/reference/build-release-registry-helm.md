@@ -289,6 +289,7 @@ Publishing behavior:
 - Push tag `vX.Y.Z`:
   - Docker images are tagged `X.Y.Z`
   - Helm chart is published as version `X.Y.Z`
+- Every run also creates Helm OCI alias tag `latest` for the chart artifact (`.../splai:latest`)
 
 Published image repositories:
 
@@ -410,6 +411,8 @@ helm upgrade splai oci://ghcr.io/mchenetz/charts/splai \
 ## 14.5 Use latest image tags with Helm (branch-release flow)
 
 For non-tag CI releases, set image tags to `latest` in your values file and install the chart version produced by that CI run.
+
+Note: Helm install/upgrade should still use a semver chart version for `--version`. The `:latest` OCI chart tag is provided as a registry alias for tooling and discovery workflows.
 
 ```yaml
 apiGateway:

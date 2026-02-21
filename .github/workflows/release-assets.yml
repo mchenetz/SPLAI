@@ -38,6 +38,9 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
       - name: Setup ko
         uses: ko-build/setup-ko@v0.8
 
@@ -160,6 +163,12 @@ jobs:
         run: |
           set -euo pipefail
           helm push "${{ steps.chart.outputs.chart_file }}" "oci://${REGISTRY}/${OWNER}/charts"
+
+      - name: Tag Helm chart as latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          oras cp "${REGISTRY}/${OWNER}/charts/splai:${{ steps.meta.outputs.chart_version }}" "${REGISTRY}/${OWNER}/charts/splai:latest"
 
       - name: Upload Helm package artifact
         uses: actions/upload-artifact@v4
