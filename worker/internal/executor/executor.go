@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -104,17 +106,25 @@ func (e *Executor) Run(ctx context.Context, t Task) (string, error) {
 		}
 		output["result"] = "ok"
 	case "embedding":
-		seed := firstNonEmpty(t.Input["text"], t.Input["op"], "embedding")
-		output["vector"] = deterministicVector(seed, 8)
-	case "retrieval":
-		output["documents"] = []map[string]any{
-			{"id": "doc-1", "score": 0.91, "text": "retrieved context A"},
-			{"id": "doc-2", "score": 0.88, "text": "retrieved context B"},
+		text := firstNonEmpty(t.Input["text"], t.Input["prompt"], t.Input["op"])
+		if text == "" {
+			return "", errors.New("embedding requires non-empty text/prompt")
 		}
+		output["vector"] = embedText(text, 128)
+		output["dimension"] = 128
+	case "retrieval":
+		query := firstNonEmpty(t.Input["query"], t.Input["text"], t.Input["prompt"])
+		docs, err := decodeDocuments(t.Input)
+		if err != nil {
+			return "", err
+		}
+		hits := retrieveDocuments(query, docs, 5)
+		output["documents"] = hits
+		output["query"] = query
 	case "aggregation":
 		output["summary"] = aggregateInputs(t.Input)
 	default:
-		output["result"] = "unsupported task type, defaulted"
+		return "", fmt.Errorf("unsupported task type %q", t.Type)
 	}
 
 	artifactPath := filepath.Join(e.cfg.ArtifactRoot, t.JobID, t.TaskID, "output.json")
@@ -304,14 +314,14 @@ func (e *Executor) runLLM(ctx context.Context, backend, model, prompt string) (s
 	case "remote", "remote_api", "remote-api":
 		return e.callRemoteAPI(ctx, model, prompt)
 	default:
-		return "LLM response (" + backend + "): " + prompt, nil
+		return "", fmt.Errorf("unsupported llm backend %q", backend)
 	}
 }
 
 func (e *Executor) callOllama(ctx context.Context, model, prompt string) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(e.cfg.OllamaBaseURL), "/")
 	if base == "" {
-		return "LLM response (ollama): " + prompt, nil
+		return "", errors.New("SPLAI_OLLAMA_BASE_URL is required for backend=ollama")
 	}
 	body := map[string]any{
 		"model":  firstNonEmpty(model, "llama3-8b-q4"),
@@ -324,13 +334,16 @@ func (e *Executor) callOllama(ctx context.Context, model, prompt string) (string
 	if err := postJSON(ctx, base+"/api/generate", "", body, &out); err != nil {
 		return "", err
 	}
-	return firstNonEmpty(out.Response, "LLM response (ollama): "+prompt), nil
+	if strings.TrimSpace(out.Response) == "" {
+		return "", errors.New("ollama returned empty response")
+	}
+	return strings.TrimSpace(out.Response), nil
 }
 
 func (e *Executor) callVLLM(ctx context.Context, model, prompt string) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(e.cfg.VLLMBaseURL), "/")
 	if base == "" {
-		return "LLM response (vllm): " + prompt, nil
+		return "", errors.New("SPLAI_VLLM_BASE_URL is required for backend=vllm")
 	}
 	body := map[string]any{
 		"model":      firstNonEmpty(model, "llama3-8b-q4"),
@@ -346,15 +359,18 @@ func (e *Executor) callVLLM(ctx context.Context, model, prompt string) (string, 
 		return "", err
 	}
 	if len(out.Choices) > 0 {
-		return firstNonEmpty(out.Choices[0].Text, "LLM response (vllm): "+prompt), nil
+		txt := strings.TrimSpace(out.Choices[0].Text)
+		if txt != "" {
+			return txt, nil
+		}
 	}
-	return "LLM response (vllm): " + prompt, nil
+	return "", errors.New("vllm returned empty choices")
 }
 
 func (e *Executor) callLlamaCPP(ctx context.Context, model, prompt string) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(e.cfg.LlamaCPPBaseURL), "/")
 	if base == "" {
-		return "LLM response (llama.cpp): " + prompt, nil
+		return "", errors.New("SPLAI_LLAMACPP_BASE_URL is required for backend=llama.cpp")
 	}
 	body := map[string]any{
 		"prompt":      prompt,
@@ -368,13 +384,16 @@ func (e *Executor) callLlamaCPP(ctx context.Context, model, prompt string) (stri
 	if err := postJSON(ctx, base+"/completion", "", body, &out); err != nil {
 		return "", err
 	}
-	return firstNonEmpty(out.Content, "LLM response (llama.cpp): "+prompt), nil
+	if strings.TrimSpace(out.Content) == "" {
+		return "", errors.New("llama.cpp returned empty content")
+	}
+	return strings.TrimSpace(out.Content), nil
 }
 
 func (e *Executor) callRemoteAPI(ctx context.Context, model, prompt string) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(e.cfg.RemoteAPIBaseURL), "/")
 	if base == "" {
-		return "LLM response (remote): " + prompt, nil
+		return "", errors.New("SPLAI_REMOTE_API_BASE_URL is required for backend=remote_api")
 	}
 	body := map[string]any{
 		"model": firstNonEmpty(model, "gpt-4o-mini"),
@@ -398,9 +417,12 @@ func (e *Executor) callRemoteAPI(ctx context.Context, model, prompt string) (str
 		return "", err
 	}
 	if len(out.Choices) > 0 {
-		return firstNonEmpty(out.Choices[0].Message.Content, "LLM response (remote): "+prompt), nil
+		txt := strings.TrimSpace(out.Choices[0].Message.Content)
+		if txt != "" {
+			return txt, nil
+		}
 	}
-	return "LLM response (remote): " + prompt, nil
+	return "", errors.New("remote api returned empty choices")
 }
 
 func postJSON(ctx context.Context, url, auth string, reqBody any, out any) error {
@@ -456,4 +478,148 @@ func (e *Executor) runSandboxedCommand(ctx context.Context, jobID, taskID, comma
 		return out.String(), errOut.String(), fmt.Errorf("sandbox command failed: %w", err)
 	}
 	return out.String(), errOut.String(), nil
+}
+
+type retrievalDoc struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+func decodeDocuments(in map[string]string) ([]retrievalDoc, error) {
+	if raw := strings.TrimSpace(in["documents_json"]); raw != "" {
+		var docs []retrievalDoc
+		if err := json.Unmarshal([]byte(raw), &docs); err != nil {
+			return nil, fmt.Errorf("invalid documents_json: %w", err)
+		}
+		out := make([]retrievalDoc, 0, len(docs))
+		for i, d := range docs {
+			if strings.TrimSpace(d.Text) == "" {
+				continue
+			}
+			if strings.TrimSpace(d.ID) == "" {
+				d.ID = fmt.Sprintf("doc-%d", i+1)
+			}
+			out = append(out, d)
+		}
+		return out, nil
+	}
+	if raw := strings.TrimSpace(in["documents"]); raw != "" {
+		lines := strings.Split(raw, "\n")
+		out := make([]retrievalDoc, 0, len(lines))
+		for i, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			out = append(out, retrievalDoc{ID: fmt.Sprintf("doc-%d", i+1), Text: line})
+		}
+		return out, nil
+	}
+	return nil, nil
+}
+
+func retrieveDocuments(query string, docs []retrievalDoc, topK int) []map[string]any {
+	if topK <= 0 {
+		topK = 5
+	}
+	if len(docs) == 0 || strings.TrimSpace(query) == "" {
+		return []map[string]any{}
+	}
+	qv := embedText(query, 128)
+	type hit struct {
+		retrievalDoc
+		score float64
+	}
+	hits := make([]hit, 0, len(docs))
+	for _, d := range docs {
+		dv := embedText(d.Text, 128)
+		s := cosineSimilarity(qv, dv)
+		hits = append(hits, hit{retrievalDoc: d, score: s})
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
+	if topK > len(hits) {
+		topK = len(hits)
+	}
+	out := make([]map[string]any, 0, topK)
+	for i := 0; i < topK; i++ {
+		out = append(out, map[string]any{
+			"id":    hits[i].ID,
+			"score": hits[i].score,
+			"text":  hits[i].Text,
+		})
+	}
+	return out
+}
+
+func embedText(text string, dim int) []float64 {
+	if dim <= 0 {
+		dim = 128
+	}
+	vec := make([]float64, dim)
+	toks := tokenize(text)
+	if len(toks) == 0 {
+		return vec
+	}
+	tf := map[string]int{}
+	for _, tok := range toks {
+		tf[tok]++
+	}
+	total := float64(len(toks))
+	for tok, n := range tf {
+		h := fnv32(tok)
+		idx := int(h % uint32(dim))
+		weight := float64(n) / total
+		vec[idx] += weight
+	}
+	normalizeL2(vec)
+	return vec
+}
+
+func tokenize(text string) []string {
+	text = strings.ToLower(text)
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func fnv32(s string) uint32 {
+	var h uint32 = 2166136261
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= 16777619
+	}
+	return h
+}
+
+func normalizeL2(v []float64) {
+	var sum float64
+	for _, x := range v {
+		sum += x * x
+	}
+	if sum == 0 {
+		return
+	}
+	n := math.Sqrt(sum)
+	for i := range v {
+		v[i] /= n
+	}
+}
+
+func cosineSimilarity(a, b []float64) float64 {
+	if len(a) == 0 || len(a) != len(b) {
+		return 0
+	}
+	var dot float64
+	for i := range a {
+		dot += a[i] * b[i]
+	}
+	return dot
 }

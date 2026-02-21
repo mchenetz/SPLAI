@@ -16,13 +16,18 @@ import (
 func TestExecutorWritesArtifactsForTaskTypes(t *testing.T) {
 	root := t.TempDir()
 	e := New(config.Config{ArtifactRoot: root})
-	types := []string{"llm_inference", "tool_execution", "embedding", "retrieval", "aggregation"}
+	types := []string{"tool_execution", "embedding", "retrieval", "aggregation"}
 	for _, typ := range types {
 		uri, err := e.Run(context.Background(), Task{
 			JobID:  "job-1",
 			TaskID: typ,
 			Type:   typ,
-			Input:  map[string]string{"prompt": "hello", "op": "x"},
+			Input: map[string]string{
+				"prompt":         "hello",
+				"op":             "x",
+				"documents_json": `[{"id":"d1","text":"hello world"},{"id":"d2","text":"another document"}]`,
+				"query":          "hello",
+			},
 		})
 		if err != nil {
 			t.Fatalf("run type %s: %v", typ, err)
@@ -46,8 +51,8 @@ func TestExecutorMinioBackendRequiresEndpoint(t *testing.T) {
 	_, err := e.Run(context.Background(), Task{
 		JobID:  "job-1",
 		TaskID: "t1",
-		Type:   "llm_inference",
-		Input:  map[string]string{"prompt": "hello"},
+		Type:   "embedding",
+		Input:  map[string]string{"text": "hello"},
 	})
 	if err == nil {
 		t.Fatalf("expected error for missing minio endpoint")
@@ -119,6 +124,40 @@ func TestExecutorLLMBackendAdapters(t *testing.T) {
 		if uri == "" {
 			t.Fatalf("empty uri for backend %s", tc.backend)
 		}
+	}
+}
+
+func TestLLMInferenceRequiresConfiguredBackend(t *testing.T) {
+	root := t.TempDir()
+	e := New(config.Config{ArtifactRoot: root})
+	_, err := e.Run(context.Background(), Task{
+		JobID:  "job-1",
+		TaskID: "t1",
+		Type:   "llm_inference",
+		Input: map[string]string{
+			"prompt":  "hello",
+			"backend": "ollama",
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected backend configuration error")
+	}
+	if !strings.Contains(err.Error(), "SPLAI_OLLAMA_BASE_URL") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUnsupportedTaskTypeFails(t *testing.T) {
+	root := t.TempDir()
+	e := New(config.Config{ArtifactRoot: root})
+	_, err := e.Run(context.Background(), Task{
+		JobID:  "job-1",
+		TaskID: "t1",
+		Type:   "not_a_real_task",
+		Input:  map[string]string{},
+	})
+	if err == nil {
+		t.Fatalf("expected error for unsupported task type")
 	}
 }
 

@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -54,11 +57,12 @@ func (c *Client) Start(ctx context.Context) {
 }
 
 func (c *Client) send(ctx context.Context) error {
+	cpuUtil, memUtil := hostUtilization()
 	payload := splaiapi.HeartbeatRequest{
 		QueueDepth:    int(c.queueDepth.Load()),
 		RunningTasks:  int(c.runningTasks.Load()),
-		CPUUtil:       15.0,
-		MemoryUtil:    20.0,
+		CPUUtil:       cpuUtil,
+		MemoryUtil:    memUtil,
 		Health:        "healthy",
 		TimestampUnix: time.Now().Unix(),
 	}
@@ -96,4 +100,63 @@ type heartbeatError struct {
 
 func (e *heartbeatError) Error() string {
 	return "heartbeat request failed: " + e.status
+}
+
+func hostUtilization() (float64, float64) {
+	return cpuUtilizationPercent(), memoryUtilizationPercent()
+}
+
+func cpuUtilizationPercent() float64 {
+	// Linux loadavg-based estimate normalized by CPU cores.
+	if b, err := os.ReadFile("/proc/loadavg"); err == nil {
+		parts := strings.Fields(string(b))
+		if len(parts) > 0 {
+			if v, err := strconv.ParseFloat(parts[0], 64); err == nil {
+				cpus := float64(runtime.NumCPU())
+				if cpus <= 0 {
+					cpus = 1
+				}
+				pct := (v / cpus) * 100.0
+				if pct < 0 {
+					pct = 0
+				}
+				if pct > 100 {
+					pct = 100
+				}
+				return pct
+			}
+		}
+	}
+	// Portable process-based fallback.
+	return 0
+}
+
+func memoryUtilizationPercent() float64 {
+	// Linux host memory from /proc/meminfo.
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		var totalKB, availKB float64
+		for _, line := range strings.Split(string(b), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			switch fields[0] {
+			case "MemTotal:":
+				totalKB, _ = strconv.ParseFloat(fields[1], 64)
+			case "MemAvailable:":
+				availKB, _ = strconv.ParseFloat(fields[1], 64)
+			}
+		}
+		if totalKB > 0 && availKB >= 0 {
+			used := ((totalKB - availKB) / totalKB) * 100.0
+			if used < 0 {
+				used = 0
+			}
+			if used > 100 {
+				used = 100
+			}
+			return used
+		}
+	}
+	return 0
 }
