@@ -12,21 +12,31 @@ It turns requests into task graphs, schedules them across workers, and returns t
 - Route and govern model/tool execution with policy controls
 - Integrate with existing AI apps via native REST or OpenAI-compatible endpoints
 
-## Quick Start (5 Minutes, Local)
+## Quick Start (Beginner-Friendly, Local)
 
-### 1. Start the control plane
+This quickstart is written for first-time users and takes you from zero to a running job.
+
+### 1. Start the API gateway (control plane)
+
+Open terminal A:
 
 ```bash
+cd /Users/mchenetz/git/SPLAI
 go run ./cmd/api-gateway
 ```
 
 ### 2. Start one worker
 
+Open terminal B:
+
 ```bash
+cd /Users/mchenetz/git/SPLAI
 go run ./worker/cmd/worker-agent
 ```
 
-### 3. Submit a job
+### 3. Submit your first job
+
+Open terminal C:
 
 ```bash
 curl -s -X POST http://localhost:8080/v1/jobs \
@@ -35,18 +45,41 @@ curl -s -X POST http://localhost:8080/v1/jobs \
     "type":"chat",
     "input":"Analyze 500 support tickets and produce root causes.",
     "policy":"enterprise-default",
-    "priority":"interactive",
-    "model":"meta-llama/Llama-3-8B-Instruct",
-    "install_model_if_missing":true
-  }'
+    "priority":"interactive"
+  }' | jq
 ```
 
-### 4. Check status
+Expected output pattern:
+
+```json
+{
+  "job_id": "job-1"
+}
+```
+
+### 4. Check job and task status
 
 ```bash
-curl -s http://localhost:8080/v1/jobs/job-1
-curl -s http://localhost:8080/v1/jobs/job-1/tasks
+curl -s http://localhost:8080/v1/jobs/job-1 | jq
+curl -s http://localhost:8080/v1/jobs/job-1/tasks | jq
 ```
+
+### 5. Optional: inspect only completed tasks
+
+```bash
+curl -s "http://localhost:8080/v1/jobs/job-1/tasks?status=Completed" | jq
+```
+
+### 6. Optional: read a local artifact
+
+```bash
+cat /tmp/splai-artifacts/job-1/t1-split/output.json | jq
+```
+
+For guided docs written in instructional style, use:
+
+- `/Users/mchenetz/git/SPLAI/docs/reference/quickstart.md`
+- `/Users/mchenetz/git/SPLAI/docs/reference/user-guide.md`
 
 ## OpenAI-Compatible Mode (Drop-In for Existing Apps)
 
