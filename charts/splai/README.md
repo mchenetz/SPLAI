@@ -76,6 +76,19 @@ All available values from `charts/splai/values.yaml`:
 | `worker.image.tag` | string | `latest` | Worker image tag. |
 | `worker.image.pullPolicy` | string | `IfNotPresent` | Worker image pull policy. |
 | `worker.extraEnv` | list | `[{name:SPLAI_OLLAMA_BASE_URL,value:http://127.0.0.1:11434},{name:SPLAI_WORKER_BACKENDS,value:ollama}]` | Extra environment variables injected into worker containers. Defaults to node-local Ollama capability. |
+| `worker.ollama.enabled` | bool | `true` | Run Ollama as sidecar in each worker DaemonSet pod (node-local endpoint for worker process). |
+| `worker.ollama.image.repository` | string | `ollama/ollama` | Ollama sidecar image repository. |
+| `worker.ollama.image.tag` | string | `latest` | Ollama sidecar image tag. |
+| `worker.ollama.image.pullPolicy` | string | `IfNotPresent` | Ollama sidecar image pull policy. |
+| `worker.ollama.args` | list | `[serve]` | Ollama container arguments. |
+| `worker.ollama.host` | string | `0.0.0.0` | Host bound by sidecar. Default allows pod health probes while worker still uses `127.0.0.1` via `SPLAI_OLLAMA_BASE_URL`. |
+| `worker.ollama.port` | int | `11434` | Ollama sidecar HTTP port. |
+| `worker.ollama.modelsPath` | string | `/tmp/.ollama` | Ollama writable home/model path in sidecar container. |
+| `worker.ollama.extraEnv` | list | `[]` | Extra env vars injected into Ollama sidecar. |
+| `worker.ollama.resources` | map | `{}` | Resource requests/limits for Ollama sidecar. |
+| `worker.ollama.dataVolume.type` | string | `emptyDir` | Ollama model cache volume mode (`emptyDir` or `hostPath`). |
+| `worker.ollama.dataVolume.hostPath` | string | `/var/lib/ollama` | Host path when `worker.ollama.dataVolume.type=hostPath`. |
+| `worker.ollama.dataVolume.sizeLimit` | string | `""` | Optional `emptyDir` size limit for Ollama cache volume. |
 | `worker.artifactRoot` | string | `/var/lib/splai/artifacts` | Path used by worker for artifacts. |
 | `worker.volume.type` | string | `emptyDir` | Artifact volume mode (`emptyDir`, `hostPath`, or `ephemeralPVC`). |
 | `worker.volume.hostPath` | string | `/var/lib/splai/artifacts` | Host path when `worker.volume.type=hostPath`. |
@@ -211,6 +224,11 @@ worker:
 
 ```yaml
 worker:
+  ollama:
+    enabled: true
+    dataVolume:
+      type: hostPath
+      hostPath: /var/lib/ollama
   extraEnv:
     - name: SPLAI_OLLAMA_BASE_URL
       value: http://127.0.0.1:11434

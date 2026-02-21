@@ -41,6 +41,44 @@ spec:
           volumeMounts:
             - name: artifact-dir
               mountPath: {{ .Values.worker.artifactRoot | quote }}
+{{- if .Values.worker.ollama.enabled }}
+        - name: ollama
+          image: "{{ .Values.worker.ollama.image.repository }}:{{ .Values.worker.ollama.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.ollama.image.pullPolicy }}
+{{- with .Values.worker.ollama.args }}
+          args:
+{{ toYaml . | indent 12 }}
+{{- end }}
+          env:
+            - name: OLLAMA_HOST
+              value: {{ printf "%s:%v" .Values.worker.ollama.host .Values.worker.ollama.port | quote }}
+            - name: HOME
+              value: {{ .Values.worker.ollama.modelsPath | quote }}
+            - name: OLLAMA_MODELS
+              value: {{ .Values.worker.ollama.modelsPath | quote }}
+{{- with .Values.worker.ollama.extraEnv }}
+{{ toYaml . | indent 12 }}
+{{- end }}
+          ports:
+            - containerPort: {{ .Values.worker.ollama.port }}
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: {{ .Values.worker.ollama.port }}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: {{ .Values.worker.ollama.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+{{ toYaml .Values.worker.ollama.resources | indent 12 }}
+          volumeMounts:
+            - name: ollama-data
+              mountPath: {{ .Values.worker.ollama.modelsPath | quote }}
+{{- end }}
       volumes:
         - name: artifact-dir
 {{- $volType := default "emptyDir" .Values.worker.volume.type }}
@@ -62,5 +100,21 @@ spec:
 {{- end }}
 {{- else }}
           emptyDir: {}
+{{- end }}
+{{- if .Values.worker.ollama.enabled }}
+        - name: ollama-data
+{{- $ollamaVolType := default "emptyDir" .Values.worker.ollama.dataVolume.type }}
+{{- if eq $ollamaVolType "hostPath" }}
+          hostPath:
+            path: {{ default "/var/lib/ollama" .Values.worker.ollama.dataVolume.hostPath | quote }}
+            type: DirectoryOrCreate
+{{- else }}
+{{- if .Values.worker.ollama.dataVolume.sizeLimit }}
+          emptyDir:
+            sizeLimit: {{ .Values.worker.ollama.dataVolume.sizeLimit | quote }}
+{{- else }}
+          emptyDir: {}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}

@@ -61,6 +61,23 @@ worker:
       accessModes:
         - ReadWriteOnce
       storageClassName: ""
+  ollama:
+    enabled: true
+    image:
+      repository: ollama/ollama
+      tag: latest
+      pullPolicy: IfNotPresent
+    args:
+      - serve
+    host: 0.0.0.0
+    port: 11434
+    modelsPath: /tmp/.ollama
+    extraEnv: []
+    resources: {}
+    dataVolume:
+      type: emptyDir
+      hostPath: /var/lib/ollama
+      sizeLimit: ""
   maxParallelTasks: "2"
   heartbeatSeconds: "5"
   pollMillis: "1500"
