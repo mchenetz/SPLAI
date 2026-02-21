@@ -47,7 +47,11 @@ worker:
     repository: ghcr.io/mchenetz/splai-worker-agent
     tag: latest
     pullPolicy: IfNotPresent
-  extraEnv: []
+  extraEnv:
+    - name: SPLAI_OLLAMA_BASE_URL
+      value: http://127.0.0.1:11434
+    - name: SPLAI_WORKER_BACKENDS
+      value: ollama
   artifactRoot: /var/lib/splai/artifacts
   volume:
     type: emptyDir

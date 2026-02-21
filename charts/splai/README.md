@@ -75,7 +75,7 @@ All available values from `charts/splai/values.yaml`:
 | `worker.image.repository` | string | `ghcr.io/mchenetz/splai-worker-agent` | Worker image repository. |
 | `worker.image.tag` | string | `latest` | Worker image tag. |
 | `worker.image.pullPolicy` | string | `IfNotPresent` | Worker image pull policy. |
-| `worker.extraEnv` | list | `[]` | Extra environment variables injected into worker containers. |
+| `worker.extraEnv` | list | `[{name:SPLAI_OLLAMA_BASE_URL,value:http://127.0.0.1:11434},{name:SPLAI_WORKER_BACKENDS,value:ollama}]` | Extra environment variables injected into worker containers. Defaults to node-local Ollama capability. |
 | `worker.artifactRoot` | string | `/var/lib/splai/artifacts` | Path used by worker for artifacts. |
 | `worker.volume.type` | string | `emptyDir` | Artifact volume mode (`emptyDir`, `hostPath`, or `ephemeralPVC`). |
 | `worker.volume.hostPath` | string | `/var/lib/splai/artifacts` | Host path when `worker.volume.type=hostPath`. |
