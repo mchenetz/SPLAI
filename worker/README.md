@@ -33,6 +33,16 @@ The worker agent is designed as a long-running process that:
 - `SPLAI_API_TOKEN` (optional): bearer token sent as `X-SPLAI-Token` for register/heartbeat/assignment/report requests when control-plane auth is enabled.
 - `HF_TOKEN` (optional): token passed through to `hf` / `huggingface-cli` / `git` model download flows for private Hugging Face repos.
 
+## Worker container image tools
+
+The published worker image includes model download tooling required by `model_download` tasks:
+
+- `hf` (Hugging Face CLI, preferred)
+- `huggingface-cli`
+- `git`
+
+These are installed via `packaging/worker/Dockerfile` and published in CI by `.github/workflows/release-assets.yml`.
+
 ## Bootstrap via `splaictl`
 
 1. Build/install binaries: `make install-worker`
