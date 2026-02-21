@@ -22,6 +22,9 @@ apiGateway:
 scheduler:
   enabled: true
   replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 8082
   image:
     repository: ghcr.io/mchenetz/splai-scheduler
     tag: latest
@@ -30,6 +33,9 @@ scheduler:
 planner:
   enabled: true
   replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 8081
   image:
     repository: ghcr.io/mchenetz/splai-planner
     tag: latest

@@ -21,4 +21,48 @@ spec:
         - name: scheduler
           image: "{{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}"
           imagePullPolicy: {{ .Values.scheduler.image.pullPolicy }}
+          env:
+            - name: SPLAI_SCHEDULER_PORT
+              value: {{ .Values.scheduler.service.port | quote }}
+            - name: SPLAI_STORE
+              value: {{ .Values.apiGateway.env.SPLAI_STORE | quote }}
+            - name: SPLAI_QUEUE
+              value: {{ .Values.apiGateway.env.SPLAI_QUEUE | quote }}
+            - name: SPLAI_LEASE_SECONDS
+              value: {{ .Values.apiGateway.env.SPLAI_LEASE_SECONDS | quote }}
+            - name: SPLAI_POSTGRES_DSN
+{{- if .Values.apiGateway.env.SPLAI_POSTGRES_DSN }}
+              value: {{ .Values.apiGateway.env.SPLAI_POSTGRES_DSN | quote }}
+{{- else }}
+              value: {{ printf "postgres://%s:%s@%s-postgres:5432/%s?sslmode=disable" .Values.postgres.auth.username .Values.postgres.auth.password (include "splai.fullname" .) .Values.postgres.auth.database | quote }}
+{{- end }}
+            - name: SPLAI_REDIS_ADDR
+{{- if .Values.apiGateway.env.SPLAI_REDIS_ADDR }}
+              value: {{ .Values.apiGateway.env.SPLAI_REDIS_ADDR | quote }}
+{{- else }}
+              value: {{ printf "%s-redis:6379" (include "splai.fullname" .) | quote }}
+{{- end }}
+          ports:
+            - containerPort: {{ .Values.scheduler.service.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.scheduler.service.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.scheduler.service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "splai.fullname" . }}-scheduler
+spec:
+  type: {{ .Values.scheduler.service.type }}
+  selector:
+    app: {{ include "splai.fullname" . }}-scheduler
+  ports:
+    - name: http
+      port: {{ .Values.scheduler.service.port }}
+      targetPort: {{ .Values.scheduler.service.port }}
 {{- end }}

@@ -21,4 +21,30 @@ spec:
         - name: planner
           image: "{{ .Values.planner.image.repository }}:{{ .Values.planner.image.tag }}"
           imagePullPolicy: {{ .Values.planner.image.pullPolicy }}
+          env:
+            - name: SPLAI_PLANNER_PORT
+              value: {{ .Values.planner.service.port | quote }}
+          ports:
+            - containerPort: {{ .Values.planner.service.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.planner.service.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.planner.service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "splai.fullname" . }}-planner
+spec:
+  type: {{ .Values.planner.service.type }}
+  selector:
+    app: {{ include "splai.fullname" . }}-planner
+  ports:
+    - name: http
+      port: {{ .Values.planner.service.port }}
+      targetPort: {{ .Values.planner.service.port }}
 {{- end }}
