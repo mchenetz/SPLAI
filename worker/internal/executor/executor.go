@@ -650,12 +650,13 @@ func lookPathWithFallback(bin string) string {
 func processEnvWithPathFallback() []string {
 	env := os.Environ()
 	hasPath := false
-	for _, e := range env {
+	for i, e := range env {
 		if strings.HasPrefix(e, "PATH=") {
 			hasPath = true
 			if strings.TrimSpace(strings.TrimPrefix(e, "PATH=")) == "" {
-				e = "PATH=" + defaultExecPath()
+				env[i] = "PATH=" + defaultExecPath()
 			}
+			break
 		}
 	}
 	if !hasPath {

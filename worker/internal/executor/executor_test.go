@@ -185,3 +185,18 @@ func TestToolExecutionRunsInSandbox(t *testing.T) {
 		t.Fatalf("expected sandbox marker in output: %s", string(b))
 	}
 }
+
+func TestProcessEnvWithPathFallbackHandlesEmptyPath(t *testing.T) {
+	t.Setenv("PATH", "")
+	env := processEnvWithPathFallback()
+	got := ""
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			got = strings.TrimPrefix(kv, "PATH=")
+			break
+		}
+	}
+	if got == "" {
+		t.Fatalf("expected non-empty PATH fallback")
+	}
+}
