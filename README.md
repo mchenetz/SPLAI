@@ -178,8 +178,16 @@ This pattern gives async reliability with retries and queueing from SPLAI.
 
 ## Kubernetes Install (Helm)
 
+Local chart:
+
 ```bash
 helm install splai ./charts/splai -n splai-system --create-namespace
+```
+
+OCI chart (published by GitHub Action):
+
+```bash
+helm install splai oci://ghcr.io/mchenetz/charts/splai --version <chart-version> -n splai-system --create-namespace
 ```
 
 Then access gateway locally:

@@ -274,3 +274,169 @@ git push origin ${VERSION}
 - [ ] chart version bumped and pushed to OCI
 - [ ] install/upgrade validated on cluster
 - [ ] release notes include exact install command
+
+## 12. Using Assets Published by GitHub Actions
+
+The workflow file is:
+
+- `.github/workflows/release-assets.yml`
+
+Publishing behavior:
+
+- Push to `master` or `main`:
+  - Docker images are tagged `latest`
+  - Chart version is generated as `<chart-version>-<branch>.<run-number>`
+- Push tag `vX.Y.Z`:
+  - Docker images are tagged `X.Y.Z`
+  - Helm chart is published as version `X.Y.Z`
+
+Published image repositories:
+
+- `ghcr.io/<owner>/splai-api-gateway`
+- `ghcr.io/<owner>/splai-scheduler`
+- `ghcr.io/<owner>/splai-planner`
+- `ghcr.io/<owner>/splai-operator`
+- `ghcr.io/<owner>/splai-worker-agent`
+
+Published Helm chart repository (OCI):
+
+- `oci://ghcr.io/<owner>/charts/splai`
+
+## 13. Docker: Pull and Run Published Images
+
+## 13.1 Authenticate to GHCR
+
+```bash
+echo "<GHCR_PAT>" | docker login ghcr.io -u <github-username> --password-stdin
+```
+
+`GHCR_PAT` must have at least `read:packages` to pull private packages.
+
+## 13.2 Pull specific version (tag release)
+
+```bash
+export OWNER=mchenetz
+export VERSION=0.2.0
+
+docker pull ghcr.io/${OWNER}/splai-api-gateway:${VERSION}
+docker pull ghcr.io/${OWNER}/splai-worker-agent:${VERSION}
+```
+
+## 13.3 Pull moving latest (branch release)
+
+```bash
+export OWNER=mchenetz
+docker pull ghcr.io/${OWNER}/splai-api-gateway:latest
+docker pull ghcr.io/${OWNER}/splai-worker-agent:latest
+```
+
+## 13.4 Run API gateway + worker via Docker images
+
+```bash
+export OWNER=mchenetz
+export TAG=latest
+
+docker network create splai-net || true
+
+# API gateway (memory store/queue)
+docker run -d --name splai-gateway --network splai-net -p 8080:8080 \
+  -e SPLAI_STORE=memory \
+  -e SPLAI_QUEUE=memory \
+  ghcr.io/${OWNER}/splai-api-gateway:${TAG}
+
+# Worker
+docker run -d --name splai-worker --network splai-net \
+  -e SPLAI_CONTROL_PLANE_URL=http://splai-gateway:8080 \
+  -e SPLAI_WORKER_ID=worker-docker-1 \
+  -e SPLAI_ARTIFACT_ROOT=/tmp/splai-artifacts \
+  ghcr.io/${OWNER}/splai-worker-agent:${TAG}
+
+curl -s http://localhost:8080/healthz
+```
+
+## 14. Helm: Deploy from OCI Chart Registry
+
+## 14.1 Authenticate Helm to GHCR
+
+```bash
+echo "<GHCR_PAT>" | helm registry login ghcr.io -u <github-username> --password-stdin
+```
+
+## 14.2 Create release values referencing published image tags
+
+Create `values.release.yaml`:
+
+```yaml
+apiGateway:
+  image:
+    repository: ghcr.io/mchenetz/splai-api-gateway
+    tag: "0.2.0"
+
+scheduler:
+  image:
+    repository: ghcr.io/mchenetz/splai-scheduler
+    tag: "0.2.0"
+
+planner:
+  image:
+    repository: ghcr.io/mchenetz/splai-planner
+    tag: "0.2.0"
+
+worker:
+  image:
+    repository: ghcr.io/mchenetz/splai-worker-agent
+    tag: "0.2.0"
+```
+
+## 14.3 Install a versioned release from OCI
+
+```bash
+helm install splai oci://ghcr.io/mchenetz/charts/splai \
+  --version 0.2.0 \
+  --namespace splai-system \
+  --create-namespace \
+  -f values.release.yaml
+```
+
+## 14.4 Upgrade to a newer version
+
+```bash
+helm upgrade splai oci://ghcr.io/mchenetz/charts/splai \
+  --version 0.2.1 \
+  --namespace splai-system \
+  -f values.release.yaml
+```
+
+## 14.5 Use latest image tags with Helm (branch-release flow)
+
+For non-tag CI releases, set image tags to `latest` in your values file and install the chart version produced by that CI run.
+
+```yaml
+apiGateway:
+  image:
+    repository: ghcr.io/mchenetz/splai-api-gateway
+    tag: latest
+scheduler:
+  image:
+    repository: ghcr.io/mchenetz/splai-scheduler
+    tag: latest
+planner:
+  image:
+    repository: ghcr.io/mchenetz/splai-planner
+    tag: latest
+worker:
+  image:
+    repository: ghcr.io/mchenetz/splai-worker-agent
+    tag: latest
+```
+
+Then install/upgrade using the exact chart version shown in the workflow logs/artifacts.
+
+## 14.6 Verify Helm deployment
+
+```bash
+kubectl -n splai-system get pods
+kubectl -n splai-system get svc
+kubectl -n splai-system port-forward svc/splai-splai-api-gateway 8080:8080
+curl -s http://localhost:8080/healthz
+```
