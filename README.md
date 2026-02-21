@@ -178,10 +178,19 @@ This pattern gives async reliability with retries and queueing from SPLAI.
 
 ## Kubernetes Install (Helm)
 
-Local chart:
+From the GitHub repository (recommended):
 
 ```bash
+git clone https://github.com/mchenetz/SPLAI.git
+cd SPLAI
 helm install splai ./charts/splai -n splai-system --create-namespace
+```
+
+Directly from GitHub with helm-git plugin (optional):
+
+```bash
+helm plugin install https://github.com/aslafy-z/helm-git --version 0.16.1
+helm install splai "git+https://github.com/mchenetz/SPLAI@charts/splai?ref=master" -n splai-system --create-namespace
 ```
 
 OCI chart (published by GitHub Action):
