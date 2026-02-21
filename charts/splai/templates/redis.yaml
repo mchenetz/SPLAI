@@ -13,12 +13,27 @@ spec:
       labels:
         app: {{ include "splai.fullname" . }}-redis
     spec:
+      securityContext:
+{{ toYaml .Values.redis.podSecurityContext | indent 8 }}
       containers:
         - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          securityContext:
+{{ toYaml .Values.redis.containerSecurityContext | indent 12 }}
           ports:
             - containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: {{ .Values.redis.dataMountPath | quote }}
+      volumes:
+        - name: redis-data
+{{- if eq (default "emptyDir" .Values.redis.volume.type) "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ include "splai.fullname" . }}-redis
+{{- else }}
+          emptyDir: {}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -31,4 +46,20 @@ spec:
     - name: redis
       port: 6379
       targetPort: 6379
+{{- if eq (default "emptyDir" .Values.redis.volume.type) "pvc" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "splai.fullname" . }}-redis
+spec:
+  accessModes:
+{{ toYaml .Values.redis.volume.accessModes | indent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.redis.volume.size | quote }}
+{{- if .Values.redis.volume.storageClassName }}
+  storageClassName: {{ .Values.redis.volume.storageClassName | quote }}
+{{- end }}
+{{- end }}
 {{- end }}

@@ -111,6 +111,17 @@ All available values from `charts/splai/values.yaml`:
 | `redis.image.repository` | string | `redis` | Redis image repository. |
 | `redis.image.tag` | string | `"7"` | Redis image tag. |
 | `redis.image.pullPolicy` | string | `IfNotPresent` | Redis image pull policy. |
+| `redis.dataMountPath` | string | `/data` | Redis data directory mount path. |
+| `redis.podSecurityContext.fsGroup` | int | `0` | Pod fsGroup used to make mounted data writable in OpenShift-style UID environments. |
+| `redis.podSecurityContext.fsGroupChangePolicy` | string | `OnRootMismatch` | fsGroup permission propagation policy. |
+| `redis.podSecurityContext.seccompProfile.type` | string | `RuntimeDefault` | Pod seccomp profile type. |
+| `redis.containerSecurityContext.runAsNonRoot` | bool | `true` | Run redis container as non-root user. |
+| `redis.containerSecurityContext.allowPrivilegeEscalation` | bool | `false` | Disable privilege escalation. |
+| `redis.containerSecurityContext.capabilities.drop` | list | `[ALL]` | Drop all Linux capabilities. |
+| `redis.volume.type` | string | `emptyDir` | Redis data volume mode (`emptyDir` or `pvc`). |
+| `redis.volume.size` | string | `8Gi` | PVC size when `redis.volume.type=pvc`. |
+| `redis.volume.accessModes` | list | `[ReadWriteOnce]` | Access modes for redis PVC. |
+| `redis.volume.storageClassName` | string | `""` | StorageClass for redis PVC. Empty uses cluster default. |
 
 ### MinIO
 
@@ -235,6 +246,29 @@ Use the included example:
 helm upgrade --install splai ./charts/splai \
   -n splai-system --create-namespace \
   -f charts/splai/values.portworx.yaml
+```
+
+### 8) Redis PVC with PodSecurity-restricted defaults
+
+`values.redis-pvc.yaml`:
+
+```yaml
+redis:
+  volume:
+    type: pvc
+    size: 8Gi
+    storageClassName: px-csi-db
+  podSecurityContext:
+    fsGroup: 0
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
 ```
 
 `charts/splai/values.portworx.yaml`:

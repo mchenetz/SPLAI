@@ -85,6 +85,24 @@ redis:
     repository: redis
     tag: "7"
     pullPolicy: IfNotPresent
+  dataMountPath: /data
+  podSecurityContext:
+    fsGroup: 0
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  volume:
+    type: emptyDir
+    size: 8Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""
 
 minio:
   enabled: false
