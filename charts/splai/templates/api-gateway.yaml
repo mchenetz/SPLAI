@@ -28,9 +28,17 @@ spec:
             - name: SPLAI_LEASE_SECONDS
               value: {{ .Values.apiGateway.env.SPLAI_LEASE_SECONDS | quote }}
             - name: SPLAI_POSTGRES_DSN
+{{- if .Values.apiGateway.env.SPLAI_POSTGRES_DSN }}
               value: {{ .Values.apiGateway.env.SPLAI_POSTGRES_DSN | quote }}
+{{- else }}
+              value: {{ printf "postgres://%s:%s@%s-postgres:5432/%s?sslmode=disable" .Values.postgres.auth.username .Values.postgres.auth.password (include "splai.fullname" .) .Values.postgres.auth.database | quote }}
+{{- end }}
             - name: SPLAI_REDIS_ADDR
+{{- if .Values.apiGateway.env.SPLAI_REDIS_ADDR }}
               value: {{ .Values.apiGateway.env.SPLAI_REDIS_ADDR | quote }}
+{{- else }}
+              value: {{ printf "%s-redis:6379" (include "splai.fullname" .) | quote }}
+{{- end }}
           ports:
             - containerPort: {{ .Values.apiGateway.service.port }}
           readinessProbe:

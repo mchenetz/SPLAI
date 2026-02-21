@@ -16,8 +16,8 @@ apiGateway:
     SPLAI_STORE: postgres
     SPLAI_QUEUE: redis
     SPLAI_LEASE_SECONDS: "15"
-    SPLAI_POSTGRES_DSN: postgres://splai:splai@splai-postgres:5432/splai?sslmode=disable
-    SPLAI_REDIS_ADDR: splai-redis:6379
+    SPLAI_POSTGRES_DSN: ""
+    SPLAI_REDIS_ADDR: ""
 
 scheduler:
   enabled: true
