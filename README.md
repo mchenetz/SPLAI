@@ -208,23 +208,6 @@ The `planner` and `scheduler` deployments now run full HTTP services:
   - `GET /v1/scheduler/workers/{id}/assignments`
   - `POST /v1/scheduler/tasks/report`
 
-## Standalone Planner and Scheduler Services
-
-The `planner` and `scheduler` deployments now run full HTTP services:
-
-- Planner (default `:8081`):
-  - `GET /healthz`
-  - `POST /v1/planner/compile`
-- Scheduler (default `:8082`):
-  - `GET /healthz`
-  - `POST /v1/scheduler/jobs`
-  - `GET /v1/scheduler/jobs/{id}`
-  - `GET /v1/scheduler/jobs/{id}/tasks`
-  - `POST /v1/scheduler/workers/register`
-  - `POST /v1/scheduler/workers/{id}/heartbeat`
-  - `GET /v1/scheduler/workers/{id}/assignments`
-  - `POST /v1/scheduler/tasks/report`
-
 ## Worker Onboarding (Single Command)
 
 Build/install helper binaries:

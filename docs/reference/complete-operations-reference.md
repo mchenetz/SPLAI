@@ -914,3 +914,44 @@ splaictl verify --url http://localhost:8080 --worker-id <worker-id> --token <tok
 - Worker config: `worker/internal/config/config.go`
 - Helm chart: `charts/splai/`
 - OpenAPI: `openapi/splai-admin-task.yaml`
+
+## 13. Standalone Planner/Scheduler Service APIs
+
+These are service-local APIs exposed by `cmd/planner` and `cmd/scheduler` for decoupled control-plane operation.
+
+Planner service (default `SPLAI_PLANNER_PORT=8081`):
+
+- `GET /healthz`
+- `GET /v1/metrics`
+- `GET /v1/metrics/prometheus`
+- `POST /v1/planner/compile`
+
+Example:
+
+```bash
+curl -s -X POST http://localhost:8081/v1/planner/compile \
+  -H 'content-type: application/json' \
+  -d '{"job_id":"job-1","type":"chat","mode":"hybrid","input":"Analyze 500 tickets"}'
+```
+
+Scheduler service (default `SPLAI_SCHEDULER_PORT=8082`):
+
+- `GET /healthz`
+- `GET /v1/metrics`
+- `GET /v1/metrics/prometheus`
+- `POST /v1/scheduler/jobs`
+- `GET /v1/scheduler/jobs/{id}`
+- `GET /v1/scheduler/jobs/{id}/tasks`
+- `DELETE /v1/scheduler/jobs/{id}`
+- `POST /v1/scheduler/workers/register`
+- `POST /v1/scheduler/workers/{id}/heartbeat`
+- `GET /v1/scheduler/workers/{id}/assignments?max_tasks=1`
+- `POST /v1/scheduler/tasks/report`
+- `GET /v1/scheduler/admin/queue/dead-letter?limit=50`
+- `POST /v1/scheduler/admin/queue/dead-letter`
+- `GET /v1/scheduler/admin/audit`
+
+Notes:
+
+- Scheduler service reads the same persistence/queue env vars as the API gateway (`SPLAI_STORE`, `SPLAI_POSTGRES_DSN`, `SPLAI_QUEUE`, `SPLAI_REDIS_ADDR`, etc.).
+- For multi-tenant production use, keep auth/policy enforcement in gateway and treat scheduler service as internal control-plane traffic.

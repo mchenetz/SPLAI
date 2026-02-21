@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/example/splai/internal/observability"
 	"github.com/example/splai/internal/planner"
 )
 
@@ -32,17 +33,44 @@ func main() {
 		port = "8081"
 	}
 
+	shutdownTrace, err := observability.InitTracingFromEnv("splai-planner")
+	if err != nil {
+		log.Fatalf("init tracing: %v", err)
+	}
+	defer func() { _ = shutdownTrace(context.Background()) }()
+
 	compiler := planner.NewCompiler()
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("/v1/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		writeJSON(w, http.StatusOK, observability.Default.Snapshot())
+	})
+	mux.HandleFunc("/v1/metrics/prometheus", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(observability.Default.RenderPrometheus()))
+	})
 	mux.HandleFunc("/v1/planner/compile", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
+		started := time.Now()
+		defer func() {
+			observability.Default.IncCounter("planner_compile_requests_total", nil, 1)
+			observability.Default.SetGauge("planner_last_compile_duration_ms", nil, float64(time.Since(started).Milliseconds()))
+		}()
 		var req compileRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
