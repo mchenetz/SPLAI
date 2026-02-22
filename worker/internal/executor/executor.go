@@ -64,10 +64,22 @@ func (e *Executor) Run(ctx context.Context, t Task) (string, error) {
 	}
 	switch strings.ToLower(strings.TrimSpace(t.Type)) {
 	case "llm_inference":
+		backend := strings.ToLower(firstNonEmpty(t.Input["backend"], "ollama"))
+		modelName := firstNonEmpty(t.Input["model"])
+		if backend == "ollama" {
+			modelName = normalizeOllamaModelName(modelName)
+		}
 		if parseBool(t.Input["_install_model_if_missing"], false) {
-			modelName := firstNonEmpty(t.Input["model"])
 			if modelName != "" {
-				installedPath, installedNow, err := e.ensureModelInstalled(ctx, modelName, firstNonEmpty(t.Input["model_source"], "huggingface"), true)
+				modelSource := strings.ToLower(strings.TrimSpace(t.Input["model_source"]))
+				if modelSource == "" {
+					if backend == "ollama" {
+						modelSource = "ollama"
+					} else {
+						modelSource = "huggingface"
+					}
+				}
+				installedPath, installedNow, err := e.ensureModelInstalled(ctx, modelName, modelSource, true)
 				if err != nil {
 					return "", fmt.Errorf("install model %s: %w", modelName, err)
 				}
@@ -77,8 +89,6 @@ func (e *Executor) Run(ctx context.Context, t Task) (string, error) {
 			}
 		}
 		prompt := firstNonEmpty(t.Input["prompt"], t.Input["text"], t.Input["op"])
-		modelName := firstNonEmpty(t.Input["model"])
-		backend := strings.ToLower(firstNonEmpty(t.Input["backend"], "ollama"))
 		output["backend"] = backend
 		text, err := e.runLLM(ctx, backend, modelName, prompt)
 		if err != nil {
@@ -236,6 +246,13 @@ func (e *Executor) ensureModelInstalled(ctx context.Context, model, source strin
 	}
 	if source == "" {
 		source = "huggingface"
+	}
+	if source == "ollama" {
+		ollamaModel := normalizeOllamaModelName(model)
+		if err := e.pullOllamaModel(ctx, ollamaModel); err != nil {
+			return "", false, err
+		}
+		return "ollama://" + ollamaModel, true, nil
 	}
 	if source != "huggingface" {
 		return "", false, fmt.Errorf("unsupported model source %q", source)
@@ -649,8 +666,9 @@ func (e *Executor) callOllama(ctx context.Context, model, prompt string) (string
 	if base == "" {
 		return "", errors.New("SPLAI_OLLAMA_BASE_URL is required for backend=ollama")
 	}
+	model = normalizeOllamaModelName(firstNonEmpty(model, "llama3.1:8b"))
 	body := map[string]any{
-		"model":  firstNonEmpty(model, "llama3-8b-q4"),
+		"model":  model,
 		"prompt": prompt,
 		"stream": false,
 	}
@@ -664,6 +682,62 @@ func (e *Executor) callOllama(ctx context.Context, model, prompt string) (string
 		return "", errors.New("ollama returned empty response")
 	}
 	return strings.TrimSpace(out.Response), nil
+}
+
+func (e *Executor) pullOllamaModel(ctx context.Context, model string) error {
+	base := strings.TrimRight(strings.TrimSpace(e.cfg.OllamaBaseURL), "/")
+	if base == "" {
+		return errors.New("SPLAI_OLLAMA_BASE_URL is required for model source=ollama")
+	}
+	var out map[string]any
+	if err := postJSON(ctx, base+"/api/pull", "", map[string]any{
+		"name":   model,
+		"stream": false,
+	}, &out); err != nil {
+		return fmt.Errorf("ollama pull failed for %s: %w", model, err)
+	}
+	return nil
+}
+
+func normalizeOllamaModelName(model string) string {
+	m := strings.TrimSpace(model)
+	if m == "" {
+		return "llama3.1:8b"
+	}
+	lower := strings.ToLower(m)
+	if !strings.Contains(lower, "/") {
+		switch lower {
+		case "llama3-8b-q4", "llama3-8b", "llama3":
+			return "llama3:8b"
+		case "llama3.1-8b", "llama3.1":
+			return "llama3.1:8b"
+		default:
+			return m
+		}
+	}
+	name := lower
+	if idx := strings.LastIndex(name, "/"); idx >= 0 && idx+1 < len(name) {
+		name = name[idx+1:]
+	}
+	name = strings.ReplaceAll(name, "_", "-")
+	switch {
+	case strings.Contains(name, "llama-3.3") && strings.Contains(name, "70b"):
+		return "llama3.3:70b"
+	case strings.Contains(name, "llama-3.2") && strings.Contains(name, "3b"):
+		return "llama3.2:3b"
+	case strings.Contains(name, "llama-3.2") && strings.Contains(name, "1b"):
+		return "llama3.2:1b"
+	case strings.Contains(name, "llama-3.1") && strings.Contains(name, "70b"):
+		return "llama3.1:70b"
+	case strings.Contains(name, "llama-3.1") && strings.Contains(name, "8b"):
+		return "llama3.1:8b"
+	case strings.Contains(name, "llama-3") && strings.Contains(name, "70b"):
+		return "llama3:70b"
+	case strings.Contains(name, "llama-3") && strings.Contains(name, "8b"):
+		return "llama3:8b"
+	default:
+		return m
+	}
 }
 
 func (e *Executor) callVLLM(ctx context.Context, model, prompt string) (string, error) {

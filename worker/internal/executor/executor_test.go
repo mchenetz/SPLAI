@@ -148,6 +148,84 @@ func TestLLMInferenceRequiresConfiguredBackend(t *testing.T) {
 	}
 }
 
+func TestLLMInferenceOllamaNormalizesHFModelID(t *testing.T) {
+	var gotModel string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/generate" {
+			http.NotFound(w, r)
+			return
+		}
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		if v, ok := in["model"].(string); ok {
+			gotModel = v
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"response": "ok"})
+	}))
+	defer ts.Close()
+
+	root := t.TempDir()
+	e := New(config.Config{
+		ArtifactRoot:  root,
+		OllamaBaseURL: ts.URL,
+	})
+	_, err := e.Run(context.Background(), Task{
+		JobID:  "job-ollama-model-map",
+		TaskID: "t1",
+		Type:   "llm_inference",
+		Input: map[string]string{
+			"backend": "ollama",
+			"model":   "meta-llama/Meta-Llama-3-8B-Instruct",
+			"prompt":  "hello",
+		},
+	})
+	if err != nil {
+		t.Fatalf("run llm: %v", err)
+	}
+	if gotModel != "llama3:8b" {
+		t.Fatalf("expected normalized ollama model llama3:8b, got %q", gotModel)
+	}
+}
+
+func TestModelDownloadOllamaSourcePullsViaAPI(t *testing.T) {
+	pulled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/pull" {
+			http.NotFound(w, r)
+			return
+		}
+		pulled = true
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success"})
+	}))
+	defer ts.Close()
+
+	root := t.TempDir()
+	e := New(config.Config{
+		ArtifactRoot:  root,
+		OllamaBaseURL: ts.URL,
+	})
+	uri, err := e.Run(context.Background(), Task{
+		JobID:  "job-ollama-pull",
+		TaskID: "t1",
+		Type:   "model_download",
+		Input: map[string]string{
+			"model":  "meta-llama/Llama-3.1-8B-Instruct",
+			"source": "ollama",
+		},
+	})
+	if err != nil {
+		t.Fatalf("model_download ollama failed: %v", err)
+	}
+	if !pulled {
+		t.Fatalf("expected ollama pull API call")
+	}
+	if uri == "" {
+		t.Fatalf("expected artifact uri")
+	}
+}
+
 func TestEmbeddingBackendsAndBatchInput(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

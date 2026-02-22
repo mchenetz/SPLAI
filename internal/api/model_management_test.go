@@ -17,12 +17,15 @@ func TestInjectModelInstallTasks(t *testing.T) {
 			{TaskID: "t2", Type: "aggregation", Inputs: map[string]string{"op": "agg"}, Dependencies: []string{"t1"}},
 		},
 	}
-	out := injectModelInstallTasks(dag, "meta-llama/Llama-3-8B-Instruct", true)
+	out := injectModelInstallTasks(dag, "meta-llama/Llama-3-8B-Instruct", "ollama", true)
 	if len(out.Tasks) != 3 {
 		t.Fatalf("expected 3 tasks, got %d", len(out.Tasks))
 	}
 	if out.Tasks[0].Type != "model_download" {
 		t.Fatalf("expected first task model_download, got %s", out.Tasks[0].Type)
+	}
+	if out.Tasks[0].Inputs["source"] != "ollama" {
+		t.Fatalf("expected ollama model source for ollama backend, got %q", out.Tasks[0].Inputs["source"])
 	}
 	var llm planner.Task
 	for _, task := range out.Tasks {

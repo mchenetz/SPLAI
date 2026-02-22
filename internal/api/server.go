@@ -153,7 +153,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	jobID := fmt.Sprintf("job-%d", atomic.AddUint64(&s.seq, 1))
 	dag := s.planner.CompileWithMode(jobID, req.Type, req.Input, req.PlannerMode)
 	dag = injectModelBackend(dag, route.Backend)
-	dag = injectModelInstallTasks(dag, req.Model, req.InstallModelIfMissing)
+	dag = injectModelInstallTasks(dag, req.Model, route.Backend, req.InstallModelIfMissing)
 	dag = injectJobSpread(dag, req.JobSpread)
 	if err := s.engine.AddJob(
 		jobID,
@@ -1299,8 +1299,9 @@ func countMatchingRefs(requested []state.TaskRef, inDead []state.TaskRef) int {
 	return count
 }
 
-func injectModelInstallTasks(dag planner.DAG, model string, installIfMissing bool) planner.DAG {
+func injectModelInstallTasks(dag planner.DAG, model, backend string, installIfMissing bool) planner.DAG {
 	model = strings.TrimSpace(model)
+	backend = strings.ToLower(strings.TrimSpace(backend))
 	if !installIfMissing || model == "" || len(dag.Tasks) == 0 {
 		return dag
 	}
@@ -1322,6 +1323,10 @@ func injectModelInstallTasks(dag planner.DAG, model string, installIfMissing boo
 	if _, ok := existing[installTaskID]; ok {
 		installTaskID = "t0-model-install-1"
 	}
+	modelSource := "huggingface"
+	if backend == "ollama" {
+		modelSource = "ollama"
+	}
 	dag.Tasks = append([]planner.Task{
 		{
 			TaskID:     installTaskID,
@@ -1330,7 +1335,7 @@ func injectModelInstallTasks(dag planner.DAG, model string, installIfMissing boo
 			MaxRetries: 1,
 			Inputs: map[string]string{
 				"model":           model,
-				"source":          "huggingface",
+				"source":          modelSource,
 				"only_if_missing": "true",
 			},
 		},
@@ -1346,7 +1351,7 @@ func injectModelInstallTasks(dag planner.DAG, model string, installIfMissing boo
 			dag.Tasks[i].Inputs = map[string]string{}
 		}
 		dag.Tasks[i].Inputs["_install_model_if_missing"] = "true"
-		dag.Tasks[i].Inputs["model_source"] = "huggingface"
+		dag.Tasks[i].Inputs["model_source"] = modelSource
 		if !containsString(dag.Tasks[i].Dependencies, installTaskID) {
 			dag.Tasks[i].Dependencies = append(dag.Tasks[i].Dependencies, installTaskID)
 		}
