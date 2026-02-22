@@ -448,3 +448,92 @@ func TestProcessEnvWithPathFallbackHandlesEmptyPath(t *testing.T) {
 		t.Fatalf("expected non-empty PATH fallback")
 	}
 }
+
+func TestToolExecutionUsesCatalogDefinition(t *testing.T) {
+	root := t.TempDir()
+	catalogPath := filepath.Join(root, "tools.yaml")
+	if err := os.WriteFile(catalogPath, []byte(`
+version: v1
+tools:
+  - id: echo-msg
+    version: "1.0.0"
+    command_template: "printf %s {{message}}"
+    required_params: ["message"]
+    allowed_params: ["message"]
+    timeout_seconds: 10
+`), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+	e := New(config.Config{
+		ArtifactRoot:     root,
+		ToolCatalogPath:  catalogPath,
+		AllowInlineTools: false,
+	})
+	_, err := e.Run(context.Background(), Task{
+		JobID:  "job-tools",
+		TaskID: "t-catalog",
+		Type:   "tool_execution",
+		Input: map[string]string{
+			"tool":          "echo-msg",
+			"param.message": "hello catalog",
+		},
+	})
+	if err != nil {
+		t.Fatalf("catalog tool execution failed: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "job-tools", "t-catalog", "output.json"))
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if !strings.Contains(string(b), `"tool_defined": true`) {
+		t.Fatalf("expected tool_defined marker: %s", string(b))
+	}
+	if !strings.Contains(string(b), `"stdout": "hello catalog"`) {
+		t.Fatalf("expected stdout in output: %s", string(b))
+	}
+}
+
+func TestToolExecutionInlineCommandCanBeDisabled(t *testing.T) {
+	root := t.TempDir()
+	catalogPath := filepath.Join(root, "tools.yaml")
+	if err := os.WriteFile(catalogPath, []byte("version: v1\ntools: []\n"), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+	e := New(config.Config{
+		ArtifactRoot:     root,
+		ToolCatalogPath:  catalogPath,
+		AllowInlineTools: false,
+	})
+	_, err := e.Run(context.Background(), Task{
+		JobID:  "job-tools",
+		TaskID: "t-inline-blocked",
+		Type:   "tool_execution",
+		Input: map[string]string{
+			"command": "echo should-fail",
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected inline command to be blocked")
+	}
+	if !strings.Contains(err.Error(), "inline command/script is disabled") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestToolExecutionUnknownToolWithoutCommandIsNoop(t *testing.T) {
+	root := t.TempDir()
+	e := New(config.Config{
+		ArtifactRoot: root,
+	})
+	_, err := e.Run(context.Background(), Task{
+		JobID:  "job-tools",
+		TaskID: "t-noop",
+		Type:   "tool_execution",
+		Input: map[string]string{
+			"tool": "unknown-tool",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected noop for unknown tool without command: %v", err)
+	}
+}

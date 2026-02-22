@@ -41,6 +41,8 @@ The worker agent is designed as a long-running process that:
 - `SPLAI_RETRIEVAL_BASE_URL` (optional): remote retrieval service base URL when `SPLAI_RETRIEVAL_BACKEND=remote_api`.
 - `SPLAI_RETRIEVAL_API_KEY` (optional): bearer API key for remote retrieval requests.
 - `SPLAI_RETRIEVAL_HTTP_RETRIES` (default `2`): retry count for remote retrieval HTTP calls.
+- `SPLAI_TOOL_CATALOG_PATH` (optional): path to YAML/JSON tool catalog with versioned tool specs.
+- `SPLAI_TOOL_ALLOW_INLINE_COMMANDS` (default `true`): when `false`, `tool_execution` rejects raw `command`/`script` and requires catalog-defined `tool`.
 
 ## Worker container image tools
 
@@ -66,6 +68,45 @@ These are installed via `packaging/worker/Dockerfile` and published in CI by `.g
 - `embedding`
 - `retrieval`
 - `aggregation`
+
+## Defining tools (catalog-based)
+
+`tool_execution` supports two modes:
+
+1. Inline command mode (`inputs.command` or `inputs.script`) for quick testing.
+2. Catalog mode (`inputs.tool`) for production-safe execution.
+
+Catalog mode uses versioned specs from `SPLAI_TOOL_CATALOG_PATH`:
+
+```yaml
+version: v1
+tools:
+  - id: echo
+    version: "1.0.0"
+    command_template: "printf %s {{message}}"
+    required_params: ["message"]
+    allowed_params: ["message"]
+    timeout_seconds: 5
+```
+
+Task example:
+
+```json
+{
+  "task_id": "t1",
+  "type": "tool_execution",
+  "inputs": {
+    "tool": "echo",
+    "param.message": "hello from catalog tool"
+  }
+}
+```
+
+Notes:
+- Placeholder params use `{{param_name}}` and are shell-escaped.
+- `required_params` must be provided by task input.
+- If `allowed_params` is set, extra params are rejected.
+- Built-in `split` tool is available even without a custom catalog.
 
 ## Aggregation inputs
 

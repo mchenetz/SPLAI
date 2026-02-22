@@ -24,14 +24,27 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/example/splai/worker/internal/config"
+	"github.com/example/splai/worker/internal/tools"
 )
 
 type Executor struct {
-	cfg config.Config
+	cfg              config.Config
+	catalog          tools.Catalog
+	allowInlineTools bool
 }
 
 func New(cfg config.Config) *Executor {
-	return &Executor{cfg: cfg}
+	catalog, err := tools.Load(cfg.ToolCatalogPath)
+	if err != nil {
+		// Keep worker functional even if catalog path is bad; surface in task errors later.
+		catalog = tools.Catalog{}
+	}
+	allowInline := cfg.AllowInlineTools
+	// Preserve backwards-compatible behavior for zero-value test/runtime configs.
+	if !allowInline && strings.TrimSpace(cfg.ToolCatalogPath) == "" {
+		allowInline = true
+	}
+	return &Executor{cfg: cfg, catalog: catalog, allowInlineTools: allowInline}
 }
 
 type Task struct {
@@ -90,15 +103,33 @@ func (e *Executor) Run(ctx context.Context, t Task) (string, error) {
 		output["model_installed_now"] = installedNow
 		output["result"] = "ok"
 	case "tool_execution":
-		op := firstNonEmpty(t.Input["op"], "noop")
+		op := firstNonEmpty(t.Input["tool"], t.Input["op"], "noop")
 		output["tool"] = op
 		output["sandboxed"] = true
 		cmd := firstNonEmpty(t.Input["command"], t.Input["script"])
+		timeoutSec := 30
+		if cmd == "" && strings.TrimSpace(op) != "" {
+			spec, ok := e.catalog.Resolve(op)
+			if ok {
+				rendered, renderErr := spec.Render(t.Input)
+				if renderErr != nil {
+					return "", renderErr
+				}
+				cmd = rendered
+				timeoutSec = spec.Timeout()
+				output["tool_version"] = spec.Version
+				output["tool_defined"] = true
+			}
+		}
 		if cmd == "" {
 			output["result"] = "ok"
+			output["tool_defined"] = false
 			break
 		}
-		stdout, stderr, err := e.runSandboxedCommand(ctx, t.JobID, t.TaskID, cmd)
+		if firstNonEmpty(t.Input["command"], t.Input["script"]) != "" && !e.allowInlineTools {
+			return "", errors.New("inline command/script is disabled; provide inputs.tool and catalog definition")
+		}
+		stdout, stderr, err := e.runSandboxedCommand(ctx, t.JobID, t.TaskID, cmd, timeoutSec)
 		output["stdout"] = stdout
 		output["stderr"] = stderr
 		if err != nil {
@@ -904,13 +935,16 @@ func validateVector(v []float64) error {
 	return nil
 }
 
-func (e *Executor) runSandboxedCommand(ctx context.Context, jobID, taskID, command string) (string, string, error) {
+func (e *Executor) runSandboxedCommand(ctx context.Context, jobID, taskID, command string, timeoutSeconds int) (string, string, error) {
 	sandboxDir := filepath.Join(e.cfg.ArtifactRoot, "sandboxes", jobID, taskID)
 	if err := os.MkdirAll(sandboxDir, 0o700); err != nil {
 		return "", "", err
 	}
 	// Lightweight sandbox: isolated working directory, restricted env, and hard timeout.
-	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 30
+	}
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, "/bin/sh", "-c", command)
 	cmd.Dir = sandboxDir

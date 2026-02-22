@@ -1,0 +1,18 @@
+version: v1
+tools:
+  - id: split
+    version: "1.0.0"
+    description: Split multiline text into chunks.
+    command_template: "python -c \"import json; t={{text}}; c=[x.strip() for x in str(t).split('\\\\n') if x.strip()]; print(json.dumps({'chunks': c if c else [str(t)]}))\""
+    required_params: ["text"]
+    allowed_params: ["text"]
+    timeout_seconds: 20
+
+  - id: echo
+    version: "1.0.0"
+    description: Echo an input message.
+    command_template: "printf %s {{message}}"
+    required_params: ["message"]
+    allowed_params: ["message"]
+    timeout_seconds: 5
+

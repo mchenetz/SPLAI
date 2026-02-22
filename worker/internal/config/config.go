@@ -35,6 +35,8 @@ type Config struct {
 	RetrievalBaseURL     string
 	RetrievalAPIKey      string
 	RetrievalHTTPRetries int
+	ToolCatalogPath      string
+	AllowInlineTools     bool
 }
 
 func FromEnv() Config {
@@ -66,6 +68,8 @@ func FromEnv() Config {
 	retrievalBaseURL := getenv("SPLAI_RETRIEVAL_BASE_URL", "")
 	retrievalAPIKey := getenv("SPLAI_RETRIEVAL_API_KEY", "")
 	retrievalHTTPRetries := getenvInt("SPLAI_RETRIEVAL_HTTP_RETRIES", 2)
+	toolCatalogPath := getenv("SPLAI_TOOL_CATALOG_PATH", "")
+	allowInlineTools := getenvBool("SPLAI_TOOL_ALLOW_INLINE_COMMANDS", true)
 
 	return Config{
 		WorkerID:             workerID,
@@ -96,6 +100,8 @@ func FromEnv() Config {
 		RetrievalBaseURL:     retrievalBaseURL,
 		RetrievalAPIKey:      retrievalAPIKey,
 		RetrievalHTTPRetries: retrievalHTTPRetries,
+		ToolCatalogPath:      toolCatalogPath,
+		AllowInlineTools:     allowInlineTools,
 	}
 }
 
