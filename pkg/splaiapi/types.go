@@ -8,6 +8,7 @@ type SubmitJobRequest struct {
 	Policy                string `json:"policy"`
 	Priority              string `json:"priority"`
 	PlannerMode           string `json:"planner_mode,omitempty"`
+	JobSpread             bool   `json:"job_spread,omitempty"`
 	InstallModelIfMissing bool   `json:"install_model_if_missing,omitempty"`
 	Tenant                string `json:"tenant,omitempty"`
 	Model                 string `json:"model,omitempty"`

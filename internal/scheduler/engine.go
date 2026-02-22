@@ -45,6 +45,7 @@ type ScoreWeights struct {
 	LatencyPrediction float64
 	FairnessPenalty   float64
 	WaitAgeBonus      float64
+	JobSpreadPenalty  float64
 }
 
 type Job struct {
@@ -119,6 +120,9 @@ func NewEngine(store state.Store, queue state.Queue, opts Options) *Engine {
 	}
 	if w.WaitAgeBonus == 0 {
 		w.WaitAgeBonus = 0.05
+	}
+	if w.JobSpreadPenalty == 0 {
+		w.JobSpreadPenalty = 0.6
 	}
 	preempt := opts.Preempt
 	if !opts.Preempt {
@@ -594,6 +598,16 @@ func (e *Engine) bestWorkerForTask(ctx context.Context, job state.JobRecord, tas
 			}
 		}
 	}
+	jobSpreadEnabled := parseBool(task.Inputs["_job_spread"])
+	stageWorkerUsage := map[string]int{}
+	jobHasParallelStage := false
+	if jobSpreadEnabled {
+		jobTasks, err := e.store.ListTasksByJob(ctx, job.ID)
+		if err != nil {
+			return "", 0, err
+		}
+		stageWorkerUsage, jobHasParallelStage = computeStageWorkerUsage(jobTasks, task)
+	}
 	tenantRunning, _ := e.store.CountTasksByTenantStatus(ctx, job.Tenant, JobRunning)
 	bestID := ""
 	bestScore := math.Inf(-1)
@@ -615,7 +629,7 @@ func (e *Engine) bestWorkerForTask(ctx context.Context, job state.JobRecord, tas
 		if llmTask && requiredModel != "" && hasModelInventory && !contains(w.Models, requiredModel) {
 			continue
 		}
-		score := e.computeWorkerScore(task, w, tenantRunning, w.RunningTasks)
+		score := e.computeWorkerScore(task, w, tenantRunning, w.RunningTasks, stageWorkerUsage[w.ID], jobSpreadEnabled, jobHasParallelStage)
 		if score > bestScore {
 			bestScore = score
 			bestID = w.ID
@@ -694,7 +708,7 @@ func workerSupportsBackend(w state.WorkerRecord, backend string) bool {
 	return false
 }
 
-func (e *Engine) computeWorkerScore(task state.TaskRecord, w state.WorkerRecord, tenantRunning, liveRunning int) float64 {
+func (e *Engine) computeWorkerScore(task state.TaskRecord, w state.WorkerRecord, tenantRunning, liveRunning, stageWorkerUseCount int, jobSpreadEnabled, jobHasParallelStage bool) float64 {
 	capabilityMatch := 0.0
 	if task.Type == "llm_inference" {
 		capabilityMatch += e.weights.CapabilityMatch
@@ -716,11 +730,41 @@ func (e *Engine) computeWorkerScore(task state.TaskRecord, w state.WorkerRecord,
 	queuePenalty := float64(w.QueueDepth+liveRunning) * e.weights.QueuePenalty
 	latencyPrediction := ((w.CPUUtil + w.MemoryUtil) / 100.0) * e.weights.LatencyPrediction
 	fairnessPenalty := float64(tenantRunning) * e.weights.FairnessPenalty
+	jobSpreadPenalty := 0.0
+	// Hybrid spread: prefer spreading only when multiple tasks in this job are runnable in parallel.
+	if jobSpreadEnabled && jobHasParallelStage && stageWorkerUseCount > 0 {
+		jobSpreadPenalty = float64(stageWorkerUseCount) * e.weights.JobSpreadPenalty
+	}
 	waitAgeBonus := 0.0
 	if !task.CreatedAt.IsZero() {
 		waitAgeBonus = time.Since(task.CreatedAt).Seconds() / 60.0 * e.weights.WaitAgeBonus
 	}
-	return capabilityMatch + modelWarmCache + localityScore - queuePenalty - latencyPrediction - fairnessPenalty + waitAgeBonus
+	return capabilityMatch + modelWarmCache + localityScore - queuePenalty - latencyPrediction - fairnessPenalty - jobSpreadPenalty + waitAgeBonus
+}
+
+func computeStageWorkerUsage(tasks []state.TaskRecord, current state.TaskRecord) (map[string]int, bool) {
+	usage := map[string]int{}
+	stageKey := dependencyKey(current.Dependencies)
+	stageCount := 0
+	for _, t := range tasks {
+		if dependencyKey(t.Dependencies) != stageKey {
+			continue
+		}
+		stageCount++
+		if strings.TrimSpace(t.WorkerID) != "" {
+			usage[t.WorkerID]++
+		}
+	}
+	return usage, stageCount > 1
+}
+
+func dependencyKey(deps []string) string {
+	if len(deps) == 0 {
+		return ""
+	}
+	items := append([]string(nil), deps...)
+	sort.Strings(items)
+	return strings.Join(items, "|")
 }
 
 func (e *Engine) workerAtCapacity(w state.WorkerRecord) bool {

@@ -421,3 +421,160 @@ func TestLLMInferenceRespectsAdvertisedModelInventory(t *testing.T) {
 		t.Fatalf("expected one assignment for matching model worker, got %d", len(b))
 	}
 }
+
+func TestJobSpreadPrefersDifferentWorkersForParallelStage(t *testing.T) {
+	e := NewEngine(state.NewMemoryStore(), state.NewMemoryQueue(), Options{
+		QueueBackend: "memory",
+		ScoreWeights: ScoreWeights{JobSpreadPenalty: 2.0},
+	})
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-a",
+		CPU:      8,
+		Memory:   "16Gi",
+		Locality: "zone-a",
+		Backends: []string{"ollama"},
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker-a: %v", err)
+	}
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-b",
+		CPU:      8,
+		Memory:   "16Gi",
+		Locality: "zone-b",
+		Backends: []string{"ollama"},
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker-b: %v", err)
+	}
+
+	dag := planner.DAG{
+		DAGID: "dag-job-spread-parallel",
+		Tasks: []planner.Task{
+			{
+				TaskID:     "t1",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"prompt": "a", "backend": "ollama", "model": "m-a", "_job_spread": "true"},
+				TimeoutSec: 30,
+				MaxRetries: 1,
+				Constraints: &planner.TaskConstraints{
+					DataLocality: "zone-a",
+				},
+			},
+			{
+				TaskID:     "t2",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"prompt": "b", "backend": "ollama", "model": "m-a", "_job_spread": "true"},
+				TimeoutSec: 30,
+				MaxRetries: 1,
+				Constraints: &planner.TaskConstraints{
+					DataLocality: "zone-a",
+				},
+			},
+		},
+	}
+	if err := e.AddJob("job-spread-parallel", "tenant-a", "chat", "parallel", "enterprise-default", "interactive", "internal", "m-a", "", dag); err != nil {
+		t.Fatalf("add job: %v", err)
+	}
+
+	first, err := e.PollAssignments("worker-a", 1)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("expected first assignment on worker-a, err=%v len=%d", err, len(first))
+	}
+	secondFromA, err := e.PollAssignments("worker-a", 1)
+	if err != nil {
+		t.Fatalf("poll worker-a second: %v", err)
+	}
+	if len(secondFromA) != 0 {
+		t.Fatalf("expected spread to avoid second parallel task on same worker")
+	}
+	secondFromB, err := e.PollAssignments("worker-b", 1)
+	if err != nil {
+		t.Fatalf("poll worker-b second: %v", err)
+	}
+	if len(secondFromB) != 1 {
+		t.Fatalf("expected second parallel task on worker-b, got %d", len(secondFromB))
+	}
+}
+
+func TestJobSpreadDoesNotPenalizeSerialChains(t *testing.T) {
+	e := NewEngine(state.NewMemoryStore(), state.NewMemoryQueue(), Options{
+		QueueBackend: "memory",
+		ScoreWeights: ScoreWeights{JobSpreadPenalty: 2.0},
+	})
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-a",
+		CPU:      8,
+		Memory:   "16Gi",
+		Locality: "zone-a",
+		Backends: []string{"ollama"},
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker-a: %v", err)
+	}
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-b",
+		CPU:      8,
+		Memory:   "16Gi",
+		Locality: "zone-b",
+		Backends: []string{"ollama"},
+		Models:   []string{"m-a"},
+	}); err != nil {
+		t.Fatalf("register worker-b: %v", err)
+	}
+
+	dag := planner.DAG{
+		DAGID: "dag-job-spread-serial",
+		Tasks: []planner.Task{
+			{
+				TaskID:     "t1",
+				Type:       "llm_inference",
+				Inputs:     map[string]string{"prompt": "a", "backend": "ollama", "model": "m-a", "_job_spread": "true"},
+				TimeoutSec: 30,
+				MaxRetries: 1,
+				Constraints: &planner.TaskConstraints{
+					DataLocality: "zone-a",
+				},
+			},
+			{
+				TaskID:       "t2",
+				Type:         "llm_inference",
+				Inputs:       map[string]string{"prompt": "b", "backend": "ollama", "model": "m-a", "_job_spread": "true"},
+				Dependencies: []string{"t1"},
+				TimeoutSec:   30,
+				MaxRetries:   1,
+				Constraints: &planner.TaskConstraints{
+					DataLocality: "zone-a",
+				},
+			},
+		},
+	}
+	if err := e.AddJob("job-spread-serial", "tenant-a", "chat", "serial", "enterprise-default", "interactive", "internal", "m-a", "", dag); err != nil {
+		t.Fatalf("add job: %v", err)
+	}
+
+	first, err := e.PollAssignments("worker-a", 1)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("expected first assignment on worker-a, err=%v len=%d", err, len(first))
+	}
+	if err := e.ReportTaskResult(splaiapi.ReportTaskResultRequest{
+		WorkerID:          "worker-a",
+		JobID:             first[0].JobID,
+		TaskID:            first[0].TaskID,
+		LeaseID:           first[0].LeaseID,
+		IdempotencyKey:    "serial-1",
+		Status:            JobCompleted,
+		OutputArtifactURI: "artifact://job-spread-serial/t1/output.json",
+		DurationMillis:    1,
+	}); err != nil {
+		t.Fatalf("report first task: %v", err)
+	}
+
+	nextA, err := e.PollAssignments("worker-a", 1)
+	if err != nil {
+		t.Fatalf("poll worker-a next: %v", err)
+	}
+	if len(nextA) != 1 {
+		t.Fatalf("expected serial follow-up to stay on worker-a, got %d", len(nextA))
+	}
+}

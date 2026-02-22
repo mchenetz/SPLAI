@@ -154,6 +154,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	dag := s.planner.CompileWithMode(jobID, req.Type, req.Input, req.PlannerMode)
 	dag = injectModelBackend(dag, route.Backend)
 	dag = injectModelInstallTasks(dag, req.Model, req.InstallModelIfMissing)
+	dag = injectJobSpread(dag, req.JobSpread)
 	if err := s.engine.AddJob(
 		jobID,
 		tenant,
@@ -1368,6 +1369,19 @@ func injectModelBackend(dag planner.DAG, backend string) planner.DAG {
 		if strings.TrimSpace(dag.Tasks[i].Inputs["backend"]) == "" {
 			dag.Tasks[i].Inputs["backend"] = backend
 		}
+	}
+	return dag
+}
+
+func injectJobSpread(dag planner.DAG, enabled bool) planner.DAG {
+	if !enabled {
+		return dag
+	}
+	for i := range dag.Tasks {
+		if dag.Tasks[i].Inputs == nil {
+			dag.Tasks[i].Inputs = map[string]string{}
+		}
+		dag.Tasks[i].Inputs["_job_spread"] = "true"
 	}
 	return dag
 }
