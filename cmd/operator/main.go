@@ -1,25 +1,47 @@
 package main
 
 import (
-	"context"
 	"log"
-	"os/signal"
-	"syscall"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/example/splai/controllers"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	cfg := ctrl.GetConfigOrDie()
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{})
+	if err != nil {
+		log.Fatalf("create manager: %v", err)
+	}
 
-	jobReconciler := controllers.NewJobReconciler()
-	workerReconciler := controllers.NewWorkerReconciler(20 * time.Second)
+	jobReconciler := controllers.NewJobReconciler(mgr.GetClient())
+	if err := jobReconciler.SetupWithManager(mgr); err != nil {
+		log.Fatalf("setup job reconciler: %v", err)
+	}
 
-	go jobReconciler.Start(ctx)
-	go workerReconciler.Start(ctx)
+	staleAfter := workerStaleAfterFromEnv()
+	workerReconciler := controllers.NewWorkerReconciler(mgr.GetClient(), staleAfter)
+	if err := workerReconciler.SetupWithManager(mgr); err != nil {
+		log.Fatalf("setup worker reconciler: %v", err)
+	}
 
-	<-ctx.Done()
-	log.Printf("operator stopping")
+	log.Printf("starting operator stale_after=%s", staleAfter)
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		log.Fatalf("run manager: %v", err)
+	}
+}
+
+func workerStaleAfterFromEnv() time.Duration {
+	raw := os.Getenv("SPLAI_OPERATOR_WORKER_STALE_AFTER_SECONDS")
+	if raw == "" {
+		return 20 * time.Second
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 20 * time.Second
+	}
+	return time.Duration(n) * time.Second
 }
