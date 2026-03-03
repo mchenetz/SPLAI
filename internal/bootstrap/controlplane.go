@@ -34,6 +34,7 @@ func NewEngineFromEnv() (*scheduler.Engine, error) {
 		QueueBackend:  queueType,
 		PolicyEngine:  policyEngine,
 		Preempt:       getenvBool("SPLAI_SCHEDULER_PREEMPT", true),
+		PreemptSet:    true,
 		ScoreWeights: scheduler.ScoreWeights{
 			CapabilityMatch:   getenvFloat("SPLAI_SCHED_WEIGHT_CAPABILITY_MATCH", 1.0),
 			ModelWarmCache:    getenvFloat("SPLAI_SCHED_WEIGHT_MODEL_WARM_CACHE", 1.5),

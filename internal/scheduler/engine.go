@@ -35,6 +35,7 @@ type Options struct {
 	PolicyEngine  *policy.Engine
 	ScoreWeights  ScoreWeights
 	Preempt       bool
+	PreemptSet    bool
 }
 
 type ScoreWeights struct {
@@ -124,9 +125,9 @@ func NewEngine(store state.Store, queue state.Queue, opts Options) *Engine {
 	if w.JobSpreadPenalty == 0 {
 		w.JobSpreadPenalty = 0.6
 	}
-	preempt := opts.Preempt
-	if !opts.Preempt {
-		preempt = true
+	preempt := true
+	if opts.PreemptSet {
+		preempt = opts.Preempt
 	}
 	return &Engine{store: store, queue: queue, leaseDuration: leaseDuration, queueBackend: queueBackend, policy: p, weights: w, preempt: preempt}
 }
