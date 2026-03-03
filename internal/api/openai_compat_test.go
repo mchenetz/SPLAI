@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +25,7 @@ func TestOpenAICompatDisabledByDefault(t *testing.T) {
 
 func TestOpenAIChatCompletionsCompat(t *testing.T) {
 	t.Setenv("SPLAI_OPENAI_COMPAT", "true")
+	t.Setenv("SPLAI_ARTIFACT_ROOT", t.TempDir())
 	engine := scheduler.NewInMemoryEngine()
 	if err := engine.RegisterWorker(splaiapi.RegisterWorkerRequest{
 		WorkerID: "compat-worker-1",
@@ -53,10 +57,29 @@ func TestOpenAIChatCompletionsCompat(t *testing.T) {
 	if !ok || len(choices) == 0 {
 		t.Fatalf("expected choices in response")
 	}
+	firstChoice, ok := choices[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first choice object, got %T", choices[0])
+	}
+	message, ok := firstChoice["message"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected message object in first choice")
+	}
+	content, ok := message["content"].(string)
+	if !ok {
+		t.Fatalf("expected string content in first choice message")
+	}
+	if strings.HasPrefix(content, "artifact://") {
+		t.Fatalf("expected rendered text, got artifact URI: %s", content)
+	}
+	if !strings.Contains(content, "compat output for") {
+		t.Fatalf("expected compat output text, got: %s", content)
+	}
 }
 
 func TestOpenAIResponsesCompat(t *testing.T) {
 	t.Setenv("SPLAI_OPENAI_COMPAT", "true")
+	t.Setenv("SPLAI_ARTIFACT_ROOT", t.TempDir())
 	engine := scheduler.NewInMemoryEngine()
 	if err := engine.RegisterWorker(splaiapi.RegisterWorkerRequest{
 		WorkerID: "compat-worker-2",
@@ -84,6 +107,32 @@ func TestOpenAIResponsesCompat(t *testing.T) {
 	if resp["object"] != "response" {
 		t.Fatalf("unexpected object: %v", resp["object"])
 	}
+	output, ok := resp["output"].([]any)
+	if !ok || len(output) == 0 {
+		t.Fatalf("expected output messages in response")
+	}
+	firstOutput, ok := output[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first output object, got %T", output[0])
+	}
+	contentItems, ok := firstOutput["content"].([]any)
+	if !ok || len(contentItems) == 0 {
+		t.Fatalf("expected output content items")
+	}
+	firstContent, ok := contentItems[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first content item object, got %T", contentItems[0])
+	}
+	text, ok := firstContent["text"].(string)
+	if !ok {
+		t.Fatalf("expected text field in first output content item")
+	}
+	if strings.HasPrefix(text, "artifact://") {
+		t.Fatalf("expected rendered text, got artifact URI: %s", text)
+	}
+	if !strings.Contains(text, "compat output for") {
+		t.Fatalf("expected compat output text, got: %s", text)
+	}
 }
 
 func runInlineWorker(engine *scheduler.Engine, workerID string, stop <-chan struct{}) {
@@ -99,6 +148,16 @@ func runInlineWorker(engine *scheduler.Engine, workerID string, stop <-chan stru
 				continue
 			}
 			for _, a := range assignments {
+				artifactRoot := strings.TrimSpace(os.Getenv("SPLAI_ARTIFACT_ROOT"))
+				if artifactRoot == "" {
+					artifactRoot = "/tmp/splai-artifacts"
+				}
+				artifactPath := filepath.Join(artifactRoot, a.JobID, a.TaskID, "output.json")
+				_ = os.MkdirAll(filepath.Dir(artifactPath), 0o755)
+				artifactPayload, _ := json.Marshal(map[string]any{
+					"text": fmt.Sprintf("compat output for %s/%s", a.JobID, a.TaskID),
+				})
+				_ = os.WriteFile(artifactPath, artifactPayload, 0o644)
 				_ = engine.ReportTaskResult(splaiapi.ReportTaskResultRequest{
 					WorkerID:          workerID,
 					JobID:             a.JobID,

@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,55 @@ func TestPreemptionForHigherPriorityTask(t *testing.T) {
 	}
 	if tasks[0].Status != JobQueued {
 		t.Fatalf("expected preempted batch task to be queued, got %s", tasks[0].Status)
+	}
+}
+
+func TestPreemptionDisabledDoesNotRequeueLowerPriorityTask(t *testing.T) {
+	e := NewEngine(state.NewMemoryStore(), state.NewMemoryQueue(), Options{
+		QueueBackend: "memory",
+		Preempt:      false,
+		PreemptSet:   true,
+	})
+	if err := e.RegisterWorker(splaiapi.RegisterWorkerRequest{
+		WorkerID: "worker-1",
+		CPU:      4,
+		Memory:   "8Gi",
+	}); err != nil {
+		t.Fatalf("register worker: %v", err)
+	}
+
+	batchDAG := planner.NewCompiler().CompileWithMode("job-batch", "chat", "batch", "template")
+	if err := e.AddJob("job-batch", "tenant-a", "chat", "batch", "enterprise-default", "batch", "internal", "m-a", "", batchDAG); err != nil {
+		t.Fatalf("add batch job: %v", err)
+	}
+	batchAssn, err := e.PollAssignments("worker-1", 1)
+	if err != nil || len(batchAssn) != 1 {
+		t.Fatalf("expected batch assignment, err=%v len=%d", err, len(batchAssn))
+	}
+	if err := e.Heartbeat("worker-1", splaiapi.HeartbeatRequest{RunningTasks: 1, QueueDepth: 0, CPUUtil: 5, MemoryUtil: 5, Health: "healthy"}); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+
+	highDAG := planner.NewCompiler().CompileWithMode("job-high", "chat", "high", "template")
+	if err := e.AddJob("job-high", "tenant-a", "chat", "high", "enterprise-default", "interactive", "internal", "m-a", "", highDAG); err != nil {
+		t.Fatalf("add high job: %v", err)
+	}
+	if _, err := e.PollAssignments("worker-1", 1); err != nil {
+		t.Fatalf("poll high-priority assignment: %v", err)
+	}
+
+	tasks, ok, err := e.GetJobTasks("job-batch")
+	if err != nil || !ok {
+		t.Fatalf("batch tasks read failed: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected one batch task")
+	}
+	if tasks[0].Status == JobQueued {
+		t.Fatalf("expected batch task not to be preempted when preemption is disabled")
+	}
+	if strings.Contains(strings.ToLower(tasks[0].Error), "preempt") {
+		t.Fatalf("unexpected preemption marker in task error: %s", tasks[0].Error)
 	}
 }
 
