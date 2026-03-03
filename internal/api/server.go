@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,15 +27,16 @@ import (
 )
 
 type Server struct {
-	planner *planner.Compiler
-	engine  *scheduler.Engine
-	auth    *authorizer
-	safety  *adminSafety
-	limiter *submitLimiter
-	router  *models.Router
-	compat  bool
-	timeout time.Duration
-	seq     uint64
+	planner      *planner.Compiler
+	engine       *scheduler.Engine
+	auth         *authorizer
+	safety       *adminSafety
+	limiter      *submitLimiter
+	router       *models.Router
+	compat       bool
+	timeout      time.Duration
+	artifactRoot string
+	seq          uint64
 }
 
 func NewServer(p *planner.Compiler, e *scheduler.Engine) *Server {
@@ -49,15 +51,20 @@ func NewServer(p *planner.Compiler, e *scheduler.Engine) *Server {
 			timeout = time.Duration(v) * time.Second
 		}
 	}
+	artifactRoot := strings.TrimSpace(os.Getenv("SPLAI_ARTIFACT_ROOT"))
+	if artifactRoot == "" {
+		artifactRoot = "/tmp/splai-artifacts"
+	}
 	return &Server{
-		planner: p,
-		engine:  e,
-		auth:    newAuthorizerFromEnv(),
-		safety:  newAdminSafetyFromEnv(),
-		limiter: newSubmitLimiterFromEnv(),
-		router:  router,
-		compat:  parseEnvBool("SPLAI_OPENAI_COMPAT", false),
-		timeout: timeout,
+		planner:      p,
+		engine:       e,
+		auth:         newAuthorizerFromEnv(),
+		safety:       newAdminSafetyFromEnv(),
+		limiter:      newSubmitLimiterFromEnv(),
+		router:       router,
+		compat:       parseEnvBool("SPLAI_OPENAI_COMPAT", false),
+		timeout:      timeout,
+		artifactRoot: artifactRoot,
 	}
 }
 
@@ -460,10 +467,7 @@ func (s *Server) runOpenAICompatJob(r *http.Request, model, prompt string) (stri
 		}
 		switch job.Status {
 		case scheduler.JobCompleted:
-			content := strings.TrimSpace(job.ResultArtifactURI)
-			if content == "" {
-				content = "completed"
-			}
+			content := s.resolveOpenAICompatContent(jobID, job.ResultArtifactURI)
 			return content, model, nil
 		case scheduler.JobFailed, scheduler.JobCanceled:
 			if job.Message != "" {
@@ -474,6 +478,99 @@ func (s *Server) runOpenAICompatJob(r *http.Request, model, prompt string) (stri
 		time.Sleep(200 * time.Millisecond)
 	}
 	return "", "", errors.New("openai compatibility timeout waiting for completion")
+}
+
+func (s *Server) resolveOpenAICompatContent(jobID, fallbackArtifactURI string) string {
+	if text := s.extractTextFromArtifactURI(fallbackArtifactURI); text != "" {
+		return text
+	}
+	tasks, ok, err := s.engine.GetJobTasks(jobID)
+	if err == nil && ok && len(tasks) > 0 {
+		sort.SliceStable(tasks, func(i, j int) bool {
+			return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt)
+		})
+		for _, task := range tasks {
+			if text := s.extractTextFromArtifactURI(task.OutputURI); text != "" {
+				return text
+			}
+		}
+	}
+	content := strings.TrimSpace(fallbackArtifactURI)
+	if content == "" {
+		content = "completed"
+	}
+	return content
+}
+
+func (s *Server) extractTextFromArtifactURI(uri string) string {
+	localPath, ok := s.localArtifactPathFromURI(uri)
+	if !ok {
+		return ""
+	}
+	b, err := os.ReadFile(localPath)
+	if err != nil {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(b, &payload); err != nil {
+		return ""
+	}
+	if text, ok := nonEmptyString(payload["text"]); ok {
+		return text
+	}
+	if result, ok := payload["result"].(map[string]any); ok {
+		if text, ok := nonEmptyString(result["text"]); ok {
+			return text
+		}
+		if merged, ok := result["merged_fields"].(map[string]any); ok {
+			if text, ok := nonEmptyString(merged["text"]); ok {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func (s *Server) localArtifactPathFromURI(uri string) (string, bool) {
+	const prefix = "artifact://"
+	uri = strings.TrimSpace(uri)
+	if !strings.HasPrefix(uri, prefix) {
+		return "", false
+	}
+	trimmed := strings.TrimPrefix(uri, prefix)
+	if strings.HasPrefix(trimmed, "s3/") {
+		return "", false
+	}
+	parts := strings.Split(trimmed, "/")
+	if len(parts) < 3 {
+		return "", false
+	}
+	jobID := strings.TrimSpace(parts[0])
+	taskID := strings.TrimSpace(parts[1])
+	if jobID == "" || taskID == "" {
+		return "", false
+	}
+	if strings.Contains(jobID, "..") || strings.Contains(taskID, "..") {
+		return "", false
+	}
+	root := filepath.Clean(s.artifactRoot)
+	path := filepath.Clean(filepath.Join(root, jobID, taskID, "output.json"))
+	if path != root && !strings.HasPrefix(path, root+string(os.PathSeparator)) {
+		return "", false
+	}
+	return path, true
+}
+
+func nonEmptyString(v any) (string, bool) {
+	s, ok := v.(string)
+	if !ok {
+		return "", false
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", false
+	}
+	return s, true
 }
 
 func buildChatPrompt(messages []openAIChatMessage) string {
