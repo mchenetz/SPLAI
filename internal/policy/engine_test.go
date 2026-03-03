@@ -67,3 +67,38 @@ func TestEvaluateAssignmentQuota(t *testing.T) {
 		t.Fatalf("unexpected reason code: %s", d.ReasonCode)
 	}
 }
+
+func TestLoadFromEnvDefaultsToDenyWhenNoPolicyFile(t *testing.T) {
+	t.Setenv("SPLAI_POLICY_MODE", "")
+	t.Setenv("SPLAI_POLICY_FILE", "")
+	engine, err := LoadFromEnv()
+	if err != nil {
+		t.Fatalf("load policy: %v", err)
+	}
+	if engine.IsNoop() {
+		t.Fatalf("expected non-noop engine in default enforce mode")
+	}
+	d := engine.EvaluateSubmit(SubmitInput{Tenant: "tenant-a", JobType: "chat"})
+	if d.Allowed {
+		t.Fatalf("expected default deny decision")
+	}
+	if d.ReasonCode != "default_deny" {
+		t.Fatalf("unexpected reason code: %s", d.ReasonCode)
+	}
+}
+
+func TestLoadFromEnvAllowAllMode(t *testing.T) {
+	t.Setenv("SPLAI_POLICY_MODE", "allow_all")
+	t.Setenv("SPLAI_POLICY_FILE", "")
+	engine, err := LoadFromEnv()
+	if err != nil {
+		t.Fatalf("load policy: %v", err)
+	}
+	if !engine.IsNoop() {
+		t.Fatalf("expected noop allow-all engine")
+	}
+	d := engine.EvaluateSubmit(SubmitInput{Tenant: "tenant-a", JobType: "chat"})
+	if !d.Allowed {
+		t.Fatalf("expected allow decision in allow_all mode")
+	}
+}

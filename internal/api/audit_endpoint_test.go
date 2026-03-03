@@ -13,6 +13,7 @@ import (
 )
 
 func TestAuditEndpointFiltersAndCSV(t *testing.T) {
+	t.Setenv("SPLAI_API_AUTH_MODE", "enforce")
 	t.Setenv("SPLAI_API_TOKENS", "operator-token:operator|metrics")
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
@@ -68,6 +69,7 @@ func TestAuditEndpointFiltersAndCSV(t *testing.T) {
 }
 
 func TestDeadLetterRequeueSafetyControls(t *testing.T) {
+	t.Setenv("SPLAI_API_AUTH_MODE", "enforce")
 	t.Setenv("SPLAI_API_TOKENS", "operator-token:operator")
 	t.Setenv("SPLAI_ADMIN_REQUEUE_MAX_BATCH", "1")
 	t.Setenv("SPLAI_ADMIN_REQUEUE_RATE_LIMIT_PER_MIN", "1")

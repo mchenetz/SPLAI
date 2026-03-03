@@ -78,11 +78,20 @@ func (p principal) canTenantAction(tenant, action string) bool {
 }
 
 type authorizer struct {
-	enabled bool
-	tokens  map[string]principal
+	enabled       bool
+	misconfigured bool
+	tokens        map[string]principal
 }
 
 func newAuthorizerFromEnv() *authorizer {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("SPLAI_API_AUTH_MODE")))
+	if mode == "" {
+		mode = "enforce"
+	}
+	if mode == "off" || mode == "disabled" || mode == "none" {
+		return &authorizer{enabled: false, tokens: map[string]principal{}}
+	}
+
 	roleScopes := defaultRoleScopes()
 	for role, scopes := range parseRoleScopes(strings.TrimSpace(os.Getenv("SPLAI_API_ROLES"))) {
 		roleScopes[role] = scopes
@@ -90,7 +99,10 @@ func newAuthorizerFromEnv() *authorizer {
 	tokenRoles := parseTokenRoles(strings.TrimSpace(os.Getenv("SPLAI_API_TOKEN_ROLES")))
 	raw := strings.TrimSpace(os.Getenv("SPLAI_API_TOKENS"))
 	if raw == "" {
-		return &authorizer{enabled: false, tokens: map[string]principal{}}
+		if mode == "permissive" || mode == "optional" {
+			return &authorizer{enabled: false, tokens: map[string]principal{}}
+		}
+		return &authorizer{enabled: true, misconfigured: true, tokens: map[string]principal{}}
 	}
 	tokens := make(map[string]principal)
 	entries := strings.Split(raw, ",")
@@ -128,12 +140,18 @@ func newAuthorizerFromEnv() *authorizer {
 		tokens[token] = principal{id: tokenID(token), scopes: scopes}
 	}
 	if len(tokens) == 0 {
-		return &authorizer{enabled: false, tokens: map[string]principal{}}
+		if mode == "permissive" || mode == "optional" {
+			return &authorizer{enabled: false, tokens: map[string]principal{}}
+		}
+		return &authorizer{enabled: true, misconfigured: true, tokens: map[string]principal{}}
 	}
 	return &authorizer{enabled: true, tokens: tokens}
 }
 
 func (a *authorizer) authorize(r *http.Request, requiredAny ...string) (principal, int, string) {
+	if a.misconfigured {
+		return principal{}, http.StatusServiceUnavailable, "auth mode enforce requires SPLAI_API_TOKENS"
+	}
 	if !a.enabled {
 		return principal{id: "anonymous", scopes: map[string]struct{}{}}, http.StatusOK, ""
 	}

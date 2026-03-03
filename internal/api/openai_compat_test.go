@@ -16,6 +16,7 @@ import (
 )
 
 func TestOpenAICompatDisabledByDefault(t *testing.T) {
+	disableAuthForTest(t)
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	w := reqJSON(t, srv.Handler(), http.MethodPost, "/v1/chat/completions", []byte(`{}`))
 	if w.Code != http.StatusNotFound {
@@ -24,6 +25,7 @@ func TestOpenAICompatDisabledByDefault(t *testing.T) {
 }
 
 func TestOpenAIChatCompletionsCompat(t *testing.T) {
+	disableAuthForTest(t)
 	t.Setenv("SPLAI_OPENAI_COMPAT", "true")
 	t.Setenv("SPLAI_ARTIFACT_ROOT", t.TempDir())
 	engine := scheduler.NewInMemoryEngine()
@@ -85,6 +87,7 @@ func TestOpenAIChatCompletionsCompat(t *testing.T) {
 }
 
 func TestOpenAIResponsesCompat(t *testing.T) {
+	disableAuthForTest(t)
 	t.Setenv("SPLAI_OPENAI_COMPAT", "true")
 	t.Setenv("SPLAI_ARTIFACT_ROOT", t.TempDir())
 	engine := scheduler.NewInMemoryEngine()
@@ -150,6 +153,7 @@ func TestOpenAIResponsesCompat(t *testing.T) {
 }
 
 func TestOpenAIChatCompletionsCompatStream(t *testing.T) {
+	disableAuthForTest(t)
 	t.Setenv("SPLAI_OPENAI_COMPAT", "true")
 	t.Setenv("SPLAI_ARTIFACT_ROOT", t.TempDir())
 	engine := scheduler.NewInMemoryEngine()
@@ -188,6 +192,7 @@ func TestOpenAIChatCompletionsCompatStream(t *testing.T) {
 }
 
 func TestOpenAIResponsesCompatStream(t *testing.T) {
+	disableAuthForTest(t)
 	t.Setenv("SPLAI_OPENAI_COMPAT", "true")
 	t.Setenv("SPLAI_ARTIFACT_ROOT", t.TempDir())
 	engine := scheduler.NewInMemoryEngine()

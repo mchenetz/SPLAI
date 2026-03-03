@@ -12,6 +12,7 @@ import (
 )
 
 func TestMetricsPrometheusEndpoint(t *testing.T) {
+	disableAuthForTest(t)
 	observability.Default.Reset()
 	observability.Default.IncCounter("queue_claimed_total", map[string]string{"queue_backend": "memory", "worker_id": "w1"}, 1)
 

@@ -10,6 +10,7 @@ import (
 )
 
 func TestSubmitRateLimitApplied(t *testing.T) {
+	disableAuthForTest(t)
 	t.Setenv("SPLAI_SUBMIT_RATE_LIMIT_PER_MIN", "1")
 	t.Setenv("SPLAI_SUBMIT_GLOBAL_RATE_LIMIT_PER_MIN", "10")
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
@@ -42,6 +43,7 @@ func TestSubmitRateLimitApplied(t *testing.T) {
 }
 
 func TestArchiveEndpoint(t *testing.T) {
+	disableAuthForTest(t)
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 

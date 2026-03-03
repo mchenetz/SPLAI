@@ -13,6 +13,7 @@ import (
 )
 
 func TestAuthScopesForSensitiveEndpoints(t *testing.T) {
+	t.Setenv("SPLAI_API_AUTH_MODE", "enforce")
 	t.Setenv("SPLAI_API_TOKENS", "operator-token:operator|metrics,metrics-token:metrics,tenant-a-token:tenant:tenant-a")
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
@@ -74,6 +75,7 @@ func TestAuthScopesForSensitiveEndpoints(t *testing.T) {
 }
 
 func TestAuthRolesExpandScopes(t *testing.T) {
+	t.Setenv("SPLAI_API_AUTH_MODE", "enforce")
 	t.Setenv("SPLAI_API_TOKENS", "rbac-token:tenant:tenant-a")
 	t.Setenv("SPLAI_API_ROLES", "ops=operator|metrics")
 	t.Setenv("SPLAI_API_TOKEN_ROLES", "rbac-token=ops")
@@ -91,6 +93,7 @@ func TestAuthRolesExpandScopes(t *testing.T) {
 }
 
 func TestTenantReaderRunnerRoles(t *testing.T) {
+	t.Setenv("SPLAI_API_AUTH_MODE", "enforce")
 	t.Setenv("SPLAI_API_TOKENS", "runner-token:tenant:tenant-a,reader-token:tenant:tenant-a")
 	t.Setenv("SPLAI_API_TOKEN_ROLES", "runner-token=tenant-runner,reader-token=tenant-reader")
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
@@ -108,6 +111,30 @@ func TestTenantReaderRunnerRoles(t *testing.T) {
 	w = reqWithToken(t, h, http.MethodGet, "/v1/jobs/job-1", "reader-token", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("reader should read job status, got %d", w.Code)
+	}
+}
+
+func TestAuthEnforceWithoutTokensFailsClosed(t *testing.T) {
+	t.Setenv("SPLAI_API_AUTH_MODE", "enforce")
+	t.Setenv("SPLAI_API_TOKENS", "")
+	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
+	h := srv.Handler()
+
+	w := reqJSON(t, h, http.MethodGet, "/v1/metrics", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for enforce mode without tokens, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthModeOffAllowsAnonymous(t *testing.T) {
+	t.Setenv("SPLAI_API_AUTH_MODE", "off")
+	t.Setenv("SPLAI_API_TOKENS", "")
+	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
+	h := srv.Handler()
+
+	w := reqJSON(t, h, http.MethodGet, "/v1/metrics", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 when auth mode is off, got %d", w.Code)
 	}
 }
 

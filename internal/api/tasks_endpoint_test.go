@@ -14,6 +14,7 @@ import (
 )
 
 func TestJobTasksEndpointHandler(t *testing.T) {
+	disableAuthForTest(t)
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 
@@ -95,6 +96,7 @@ func TestJobTasksEndpointHandler(t *testing.T) {
 }
 
 func TestJobTasksEndpointFilteringAndPagination(t *testing.T) {
+	disableAuthForTest(t)
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	h := srv.Handler()
 

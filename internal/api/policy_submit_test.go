@@ -11,6 +11,7 @@ import (
 )
 
 func TestSubmitJobPolicyDenyReturnsForbidden(t *testing.T) {
+	disableAuthForTest(t)
 	engine := scheduler.NewEngine(
 		state.NewMemoryStore(),
 		state.NewMemoryQueue(),

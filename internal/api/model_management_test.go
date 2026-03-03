@@ -43,6 +43,7 @@ func TestInjectModelInstallTasks(t *testing.T) {
 }
 
 func TestModelPrefetchTargetsSpecificWorker(t *testing.T) {
+	disableAuthForTest(t)
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

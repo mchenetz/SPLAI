@@ -18,6 +18,7 @@ import (
 )
 
 func TestEndToEndJobLifecycle(t *testing.T) {
+	disableAuthForTest(t)
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -82,6 +83,7 @@ func TestEndToEndJobLifecycle(t *testing.T) {
 }
 
 func TestJobTasksEndpoint(t *testing.T) {
+	disableAuthForTest(t)
 	srv := NewServer(planner.NewCompiler(), scheduler.NewInMemoryEngine())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -159,6 +161,7 @@ func TestJobTasksEndpoint(t *testing.T) {
 }
 
 func TestJobStreamSSEEndpoint(t *testing.T) {
+	disableAuthForTest(t)
 	engine := scheduler.NewInMemoryEngine()
 	srv := NewServer(planner.NewCompiler(), engine)
 	ts := httptest.NewServer(srv.Handler())

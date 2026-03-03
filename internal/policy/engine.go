@@ -82,19 +82,30 @@ func NewAllowAll() *Engine {
 }
 
 func LoadFromEnv() (*Engine, error) {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("SPLAI_POLICY_MODE")))
+	if mode == "" {
+		mode = "enforce"
+	}
 	path := strings.TrimSpace(os.Getenv("SPLAI_POLICY_FILE"))
-	if path == "" {
+	if path != "" {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read policy file: %w", err)
+		}
+		var cfg Config
+		if err := yaml.Unmarshal(b, &cfg); err != nil {
+			return nil, fmt.Errorf("parse policy file: %w", err)
+		}
+		return NewFromConfig(cfg), nil
+	}
+	switch mode {
+	case "allow_all", "permissive", "off", "disabled":
 		return NewAllowAll(), nil
+	case "enforce", "strict":
+		return NewFromConfig(Config{DefaultAction: "deny"}), nil
+	default:
+		return nil, fmt.Errorf("unsupported SPLAI_POLICY_MODE value %q", mode)
 	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read policy file: %w", err)
-	}
-	var cfg Config
-	if err := yaml.Unmarshal(b, &cfg); err != nil {
-		return nil, fmt.Errorf("parse policy file: %w", err)
-	}
-	return NewFromConfig(cfg), nil
 }
 
 func NewFromConfig(cfg Config) *Engine {
