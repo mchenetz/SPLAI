@@ -47,7 +47,7 @@ Open terminal window A:
 
 ```bash
 cd <repo-root>
-go run ./cmd/api-gateway
+SPLAI_API_AUTH_MODE=off SPLAI_POLICY_MODE=allow_all go run ./cmd/api-gateway
 ```
 
 Expected result:
@@ -250,7 +250,7 @@ You should see different `worker_id` values over time.
 Start gateway with compatibility enabled:
 
 ```bash
-SPLAI_OPENAI_COMPAT=true go run ./cmd/api-gateway
+SPLAI_OPENAI_COMPAT=true SPLAI_API_AUTH_MODE=off SPLAI_POLICY_MODE=allow_all go run ./cmd/api-gateway
 ```
 
 Then send OpenAI-style request:

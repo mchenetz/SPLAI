@@ -18,7 +18,10 @@ SPLAI now supports pluggable control-plane persistence and queue backends.
 - `SPLAI_REDIS_KEY` (default `splai:tasks`)
 - `SPLAI_REDIS_DEADLETTER_MAX` (default `5`)
 - `SPLAI_LEASE_SECONDS` (default `15`)
-- `SPLAI_POLICY_FILE` (optional YAML policy config; enforces submit + assignment policy gates)
+- `SPLAI_POLICY_MODE` (`enforce` default; use `allow_all` only for local development)
+- `SPLAI_POLICY_FILE` (required in `enforce` mode to allow requests)
+- `SPLAI_API_AUTH_MODE` (`enforce` default; use `off` only for local development)
+- `SPLAI_API_TOKENS` (required in `enforce` mode)
 - `SPLAI_MODEL_ROUTING_FILE` (optional YAML model routing rules; used by API gateway)
 - `SPLAI_LLM_PLANNER_ENDPOINT` (optional HTTP endpoint for `planner_mode=llm_planner`)
 - `SPLAI_LLM_PLANNER_API_KEY` (optional bearer token for LLM planner endpoint)
@@ -70,6 +73,8 @@ SPLAI_STORE=postgres \
 SPLAI_POSTGRES_DSN='postgres://splai:splai@127.0.0.1:5432/splai?sslmode=disable' \
 SPLAI_QUEUE=redis \
 SPLAI_REDIS_ADDR=127.0.0.1:6379 \
+SPLAI_API_AUTH_MODE=off \
+SPLAI_POLICY_MODE=allow_all \
 go run ./cmd/api-gateway
 ```
 
@@ -101,7 +106,7 @@ go run ./cmd/api-gateway
 
 Authentication/authorization:
 
-- Optional token auth can be enabled via `SPLAI_API_TOKENS`.
+- Auth is enforced by default and requires `SPLAI_API_TOKENS`.
 - Format: `token:scope1|scope2,token2:scope`.
 - Required scopes:
   - `operator` for dead-letter admin endpoints

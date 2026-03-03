@@ -22,7 +22,7 @@ Open terminal A:
 
 ```bash
 cd <repo-root>
-go run ./cmd/api-gateway
+SPLAI_API_AUTH_MODE=off SPLAI_POLICY_MODE=allow_all go run ./cmd/api-gateway
 ```
 
 ### 2. Start one worker
@@ -100,7 +100,7 @@ For guided docs written in instructional style, use:
 Enable compatibility mode:
 
 ```bash
-SPLAI_OPENAI_COMPAT=true go run ./cmd/api-gateway
+SPLAI_OPENAI_COMPAT=true SPLAI_API_AUTH_MODE=off SPLAI_POLICY_MODE=allow_all go run ./cmd/api-gateway
 ```
 
 Supported endpoints:
@@ -298,8 +298,17 @@ curl -s -X POST http://localhost:8080/v1/admin/models/prefetch \
 
 ## Security and Auth
 
-Enable token auth by setting `SPLAI_API_TOKENS`.
-When enabled, send bearer tokens in `Authorization: Bearer <token>` (or `X-SPLAI-Token`).
+Auth defaults to enforce mode (`SPLAI_API_AUTH_MODE=enforce`), which requires `SPLAI_API_TOKENS`.
+Policy defaults to enforce mode (`SPLAI_POLICY_MODE=enforce`), which denies requests unless a policy file allows them.
+
+For local development, you can explicitly run insecure mode:
+
+```bash
+SPLAI_API_AUTH_MODE=off
+SPLAI_POLICY_MODE=allow_all
+```
+
+When auth is enabled, send bearer tokens in `Authorization: Bearer <token>` (or `X-SPLAI-Token`).
 
 Example:
 

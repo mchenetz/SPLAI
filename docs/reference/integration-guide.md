@@ -347,7 +347,7 @@ Minimal GitHub Actions step:
 - name: SPLAI smoke test
   run: |
     set -euo pipefail
-    go run ./cmd/api-gateway > /tmp/splai-api.log 2>&1 &
+    SPLAI_API_AUTH_MODE=off SPLAI_POLICY_MODE=allow_all go run ./cmd/api-gateway > /tmp/splai-api.log 2>&1 &
     API_PID=$!
     go run ./worker/cmd/worker-agent > /tmp/splai-worker.log 2>&1 &
     WORKER_PID=$!

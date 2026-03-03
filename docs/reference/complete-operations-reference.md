@@ -543,7 +543,8 @@ Timeout control:
 
 ## 4. Auth and RBAC Reference
 
-Auth is disabled unless `SPLAI_API_TOKENS` is set.
+Auth is enforced by default (`SPLAI_API_AUTH_MODE=enforce`).
+In enforce mode, `SPLAI_API_TOKENS` is required.
 
 ## 4.1 Token Format
 
@@ -622,7 +623,8 @@ Scheduler scoring:
 
 Auth and admin safety:
 
-- `SPLAI_API_TOKENS` optional; enables auth when set
+- `SPLAI_API_AUTH_MODE` default `enforce`; supported `enforce|off|permissive`
+- `SPLAI_API_TOKENS` required in `enforce` mode
 - `SPLAI_API_ROLES` optional
 - `SPLAI_API_TOKEN_ROLES` optional
 - `SPLAI_ADMIN_REQUEUE_MAX_BATCH` default `100`
@@ -632,7 +634,8 @@ Auth and admin safety:
 
 Planner / routing / policy:
 
-- `SPLAI_POLICY_FILE` optional YAML policy file
+- `SPLAI_POLICY_MODE` default `enforce`; supported `enforce|allow_all|permissive`
+- `SPLAI_POLICY_FILE` required in `enforce` mode to allow requests
 - `SPLAI_MODEL_ROUTING_FILE` optional YAML model routing file
 - `SPLAI_LLM_PLANNER_ENDPOINT` optional remote planner endpoint
 - `SPLAI_LLM_PLANNER_API_KEY` optional bearer token for remote planner
@@ -677,7 +680,10 @@ Observability:
 
 ## 6. Policy Engine Reference
 
-Policy file is loaded via `SPLAI_POLICY_FILE`.
+Policy defaults to enforce mode.
+
+- `SPLAI_POLICY_MODE=enforce`: deny by default unless policy file rules allow the request.
+- `SPLAI_POLICY_MODE=allow_all`: development mode equivalent to no-op policy checks.
 
 Schema:
 

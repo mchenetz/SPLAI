@@ -26,7 +26,7 @@ Open terminal A:
 
 ```bash
 cd <repo-root>
-go run ./cmd/api-gateway
+SPLAI_API_AUTH_MODE=off SPLAI_POLICY_MODE=allow_all go run ./cmd/api-gateway
 ```
 
 ## Step 2: Start a worker
