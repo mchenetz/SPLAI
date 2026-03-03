@@ -326,10 +326,6 @@ func (s *Server) handleOpenAIChatCompletions(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Stream {
-		writeError(w, http.StatusBadRequest, "stream=true is not supported in compatibility mode")
-		return
-	}
 	prompt := buildChatPrompt(req.Messages)
 	if prompt == "" {
 		writeError(w, http.StatusBadRequest, "messages is required")
@@ -345,6 +341,12 @@ func (s *Server) handleOpenAIChatCompletions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	id := fmt.Sprintf("chatcmpl-%d", atomic.AddUint64(&s.seq, 1))
+	promptTokens := estimateCompatTokens(prompt)
+	completionTokens := estimateCompatTokens(content)
+	if req.Stream {
+		s.streamOpenAIChatCompletions(w, id, usedModel, content, promptTokens, completionTokens)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":      id,
 		"object":  "chat.completion",
@@ -361,9 +363,9 @@ func (s *Server) handleOpenAIChatCompletions(w http.ResponseWriter, r *http.Requ
 			},
 		},
 		"usage": map[string]int{
-			"prompt_tokens":     0,
-			"completion_tokens": 0,
-			"total_tokens":      0,
+			"prompt_tokens":     promptTokens,
+			"completion_tokens": completionTokens,
+			"total_tokens":      promptTokens + completionTokens,
 		},
 	})
 }
@@ -376,10 +378,6 @@ func (s *Server) handleOpenAIResponses(w http.ResponseWriter, r *http.Request) {
 	var req openAIResponsesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if req.Stream {
-		writeError(w, http.StatusBadRequest, "stream=true is not supported in compatibility mode")
 		return
 	}
 	prompt := buildResponsesPrompt(req.Input)
@@ -397,6 +395,12 @@ func (s *Server) handleOpenAIResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := fmt.Sprintf("resp_%d", atomic.AddUint64(&s.seq, 1))
+	inputTokens := estimateCompatTokens(prompt)
+	outputTokens := estimateCompatTokens(content)
+	if req.Stream {
+		s.streamOpenAIResponses(w, id, usedModel, content, inputTokens, outputTokens)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":      id,
 		"object":  "response",
@@ -414,9 +418,9 @@ func (s *Server) handleOpenAIResponses(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		"usage": map[string]int{
-			"input_tokens":  0,
-			"output_tokens": 0,
-			"total_tokens":  0,
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+			"total_tokens":  inputTokens + outputTokens,
 		},
 	})
 }
@@ -571,6 +575,154 @@ func nonEmptyString(v any) (string, bool) {
 		return "", false
 	}
 	return s, true
+}
+
+func estimateCompatTokens(text string) int {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0
+	}
+	return len(strings.Fields(text))
+}
+
+func compatStreamChunks(text string, maxChars int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if maxChars <= 0 {
+		maxChars = 96
+	}
+	runes := []rune(text)
+	out := make([]string, 0, (len(runes)/maxChars)+1)
+	for len(runes) > 0 {
+		n := maxChars
+		if len(runes) < n {
+			n = len(runes)
+		}
+		out = append(out, string(runes[:n]))
+		runes = runes[n:]
+	}
+	return out
+}
+
+func writeCompatSSEData(w http.ResponseWriter, payload any) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write([]byte("data: " + string(b) + "\n\n"))
+	return err
+}
+
+func writeCompatSSEDone(w http.ResponseWriter) error {
+	_, err := w.Write([]byte("data: [DONE]\n\n"))
+	return err
+}
+
+func (s *Server) streamOpenAIChatCompletions(w http.ResponseWriter, id, model, content string, promptTokens, completionTokens int) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+	created := time.Now().UTC().Unix()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	_ = writeCompatSSEData(w, map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{"role": "assistant"},
+				"finish_reason": nil,
+			},
+		},
+	})
+	flusher.Flush()
+
+	for _, chunk := range compatStreamChunks(content, 96) {
+		_ = writeCompatSSEData(w, map[string]any{
+			"id":      id,
+			"object":  "chat.completion.chunk",
+			"created": created,
+			"model":   model,
+			"choices": []map[string]any{
+				{
+					"index":         0,
+					"delta":         map[string]any{"content": chunk},
+					"finish_reason": nil,
+				},
+			},
+		})
+		flusher.Flush()
+	}
+
+	_ = writeCompatSSEData(w, map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{},
+				"finish_reason": "stop",
+			},
+		},
+		"usage": map[string]int{
+			"prompt_tokens":     promptTokens,
+			"completion_tokens": completionTokens,
+			"total_tokens":      promptTokens + completionTokens,
+		},
+	})
+	_ = writeCompatSSEDone(w)
+	flusher.Flush()
+}
+
+func (s *Server) streamOpenAIResponses(w http.ResponseWriter, id, model, content string, inputTokens, outputTokens int) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	for _, chunk := range compatStreamChunks(content, 96) {
+		_ = writeCompatSSEData(w, map[string]any{
+			"id":     id,
+			"object": "response",
+			"type":   "response.output_text.delta",
+			"delta":  chunk,
+			"model":  model,
+		})
+		flusher.Flush()
+	}
+	_ = writeCompatSSEData(w, map[string]any{
+		"id":     id,
+		"object": "response",
+		"type":   "response.completed",
+		"model":  model,
+		"status": "completed",
+		"usage": map[string]int{
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+			"total_tokens":  inputTokens + outputTokens,
+		},
+	})
+	_ = writeCompatSSEDone(w)
+	flusher.Flush()
 }
 
 func buildChatPrompt(messages []openAIChatMessage) string {

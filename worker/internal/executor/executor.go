@@ -113,12 +113,23 @@ func (e *Executor) Run(ctx context.Context, t Task) (string, error) {
 		output["model_installed_now"] = installedNow
 		output["result"] = "ok"
 	case "tool_execution":
-		op := firstNonEmpty(t.Input["tool"], t.Input["op"], "noop")
+		op := firstNonEmpty(t.Input["tool"], t.Input["op"])
 		output["tool"] = op
 		output["sandboxed"] = true
 		cmd := firstNonEmpty(t.Input["command"], t.Input["script"])
 		timeoutSec := 30
 		if cmd == "" && strings.TrimSpace(op) != "" {
+			builtInOutput, handled, err := runBuiltInTool(op, t.Input)
+			if err != nil {
+				return "", err
+			}
+			if handled {
+				for k, v := range builtInOutput {
+					output[k] = v
+				}
+				output["tool_defined"] = true
+				break
+			}
 			spec, ok := e.catalog.Resolve(op)
 			if ok {
 				rendered, renderErr := spec.Render(t.Input)
@@ -132,9 +143,10 @@ func (e *Executor) Run(ctx context.Context, t Task) (string, error) {
 			}
 		}
 		if cmd == "" {
-			output["result"] = "ok"
-			output["tool_defined"] = false
-			break
+			if strings.TrimSpace(op) == "" {
+				return "", errors.New("tool_execution requires inputs.tool/inputs.op or command/script")
+			}
+			return "", fmt.Errorf("unknown tool %q and no command/script provided", op)
 		}
 		if firstNonEmpty(t.Input["command"], t.Input["script"]) != "" && !e.allowInlineTools {
 			return "", errors.New("inline command/script is disabled; provide inputs.tool and catalog definition")
@@ -236,6 +248,60 @@ func (e *Executor) Run(ctx context.Context, t Task) (string, error) {
 		return fmt.Sprintf("artifact://s3/%s/%s/%s/output.json", bucket, t.JobID, t.TaskID), nil
 	}
 	return fmt.Sprintf("artifact://%s/%s/output.json", t.JobID, t.TaskID), nil
+}
+
+func runBuiltInTool(op string, input map[string]string) (map[string]any, bool, error) {
+	switch strings.ToLower(strings.TrimSpace(op)) {
+	case "split":
+		text := firstNonEmpty(input["text"], input["prompt"])
+		if text == "" {
+			return nil, true, errors.New("split tool requires input.text or input.prompt")
+		}
+		chunkSize := parsePositiveInt(input["chunk_size"], 240)
+		chunks := splitTextIntoChunks(text, chunkSize)
+		return map[string]any{
+			"tool_builtin": true,
+			"result":       "ok",
+			"chunk_count":  len(chunks),
+			"chunks":       chunks,
+		}, true, nil
+	default:
+		return nil, false, nil
+	}
+}
+
+func splitTextIntoChunks(text string, chunkSize int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if chunkSize <= 0 {
+		chunkSize = 240
+	}
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+	out := make([]string, 0, (len(text)/chunkSize)+1)
+	var b strings.Builder
+	for _, w := range words {
+		if b.Len() == 0 {
+			b.WriteString(w)
+			continue
+		}
+		if b.Len()+1+len(w) > chunkSize {
+			out = append(out, b.String())
+			b.Reset()
+			b.WriteString(w)
+			continue
+		}
+		b.WriteString(" ")
+		b.WriteString(w)
+	}
+	if b.Len() > 0 {
+		out = append(out, b.String())
+	}
+	return out
 }
 
 func (e *Executor) ensureModelInstalled(ctx context.Context, model, source string, onlyIfMissing bool) (string, bool, error) {

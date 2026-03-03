@@ -18,17 +18,22 @@ func TestExecutorWritesArtifactsForTaskTypes(t *testing.T) {
 	e := New(config.Config{ArtifactRoot: root})
 	types := []string{"tool_execution", "embedding", "retrieval", "aggregation"}
 	for _, typ := range types {
+		input := map[string]string{}
+		if typ == "tool_execution" {
+			input["op"] = "split"
+			input["text"] = "hello world from built-in split operation"
+		} else {
+			input["prompt"] = "hello"
+			input["op"] = "x"
+			input["documents_json"] = `[{"id":"d1","text":"hello world"},{"id":"d2","text":"another document"}]`
+			input["query"] = "hello"
+			input["items_json"] = `[{"summary":"inline aggregation source"}]`
+		}
 		uri, err := e.Run(context.Background(), Task{
 			JobID:  "job-1",
 			TaskID: typ,
 			Type:   typ,
-			Input: map[string]string{
-				"prompt":         "hello",
-				"op":             "x",
-				"documents_json": `[{"id":"d1","text":"hello world"},{"id":"d2","text":"another document"}]`,
-				"query":          "hello",
-				"items_json":     `[{"summary":"inline aggregation source"}]`,
-			},
+			Input:  input,
 		})
 		if err != nil {
 			t.Fatalf("run type %s: %v", typ, err)
@@ -598,7 +603,7 @@ func TestToolExecutionInlineCommandCanBeDisabled(t *testing.T) {
 	}
 }
 
-func TestToolExecutionUnknownToolWithoutCommandIsNoop(t *testing.T) {
+func TestToolExecutionUnknownToolWithoutCommandReturnsError(t *testing.T) {
 	root := t.TempDir()
 	e := New(config.Config{
 		ArtifactRoot: root,
@@ -611,7 +616,10 @@ func TestToolExecutionUnknownToolWithoutCommandIsNoop(t *testing.T) {
 			"tool": "unknown-tool",
 		},
 	})
-	if err != nil {
-		t.Fatalf("expected noop for unknown tool without command: %v", err)
+	if err == nil {
+		t.Fatalf("expected error for unknown tool without command")
+	}
+	if !strings.Contains(err.Error(), "unknown tool") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
