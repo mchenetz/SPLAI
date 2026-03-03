@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
+GOPATH_BIN="$(go env GOPATH)/bin"
+PATH="${GOPATH_BIN}:${PATH}"
+export PATH
+
 if ! command -v buf >/dev/null 2>&1; then
   echo "buf is not installed; cannot generate protobuf code" >&2
   exit 1
