@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/example/splai-worker-agent:v0.1.0
+          image: ghcr.io/mchenetz/splai-worker-agent:v0.1.0
           env:
             - name: SPLAI_CONTROL_PLANE_URL
               value: http://splai-api-gateway.splai-system.svc.cluster.local:8080

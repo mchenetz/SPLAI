@@ -46,7 +46,7 @@ jq --version
 Open terminal window A:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 go run ./cmd/api-gateway
 ```
 
@@ -59,7 +59,7 @@ Expected result:
 Open terminal window B:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 go run ./worker/cmd/worker-agent
 ```
 
@@ -220,7 +220,7 @@ You will receive events such as:
 Start another worker in terminal window D:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 SPLAI_WORKER_ID=worker-2 go run ./worker/cmd/worker-agent
 ```
 
@@ -318,8 +318,8 @@ Ensure worker image/runtime has one of:
 ## Next steps
 
 1. Use persistent mode with Postgres and Redis:
-   `/Users/mchenetz/git/SPLAI/docs/reference/persistent-control-plane.md`
+   `docs/reference/persistent-control-plane.md`
 2. Use Helm values examples:
-   `/Users/mchenetz/git/SPLAI/charts/splai/README.md`
+   `charts/splai/README.md`
 3. Use full API operations reference:
-   `/Users/mchenetz/git/SPLAI/docs/reference/complete-operations-reference.md`
+   `docs/reference/complete-operations-reference.md`

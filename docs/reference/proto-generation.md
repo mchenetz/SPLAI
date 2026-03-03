@@ -11,11 +11,12 @@
 - `scripts/gen-proto.sh`
 - Output directory: `gen/proto/`
 
-## Checked-in stubs
+## Generated artifacts
 
-- `gen/proto/splai/v1/stubs.pb.go`
+Code generation writes protobuf and gRPC Go files under:
 
-These stubs provide compile-time Go message/service types in environments where external generation tools are unavailable.
+- `gen/proto/splai/v1/*.pb.go`
+- `gen/proto/splai/v1/*_grpc.pb.go`
 
 ## Generate when tools are available
 

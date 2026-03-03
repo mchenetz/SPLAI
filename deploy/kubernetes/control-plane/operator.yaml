@@ -16,7 +16,7 @@ spec:
       serviceAccountName: splai-operator
       containers:
         - name: operator
-          image: ghcr.io/example/splai-operator:v0.1.0
+          image: ghcr.io/mchenetz/splai-operator:v0.1.0
 ---
 apiVersion: v1
 kind: ServiceAccount

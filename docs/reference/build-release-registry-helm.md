@@ -39,7 +39,7 @@ export CHART_REF=oci://${REGISTRY}/${ORG}/charts
 Run from repo root:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 ```
 
 ## 3.1 Validate source before packaging

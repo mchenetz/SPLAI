@@ -15,5 +15,5 @@ spec:
     spec:
       containers:
         - name: planner
-          image: ghcr.io/example/splai-planner:v0.1.0
+          image: ghcr.io/mchenetz/splai-planner:v0.1.0
           args: []

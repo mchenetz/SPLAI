@@ -376,7 +376,7 @@ For locality-aware scale with Ollama:
 
 ## Related docs
 
-- `/Users/mchenetz/git/SPLAI/docs/reference/quickstart.md`
-- `/Users/mchenetz/git/SPLAI/docs/reference/user-guide.md`
-- `/Users/mchenetz/git/SPLAI/docs/reference/complete-operations-reference.md`
-- `/Users/mchenetz/git/SPLAI/charts/splai/README.md`
+- `docs/reference/quickstart.md`
+- `docs/reference/user-guide.md`
+- `docs/reference/complete-operations-reference.md`
+- `charts/splai/README.md`

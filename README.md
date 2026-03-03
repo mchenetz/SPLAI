@@ -21,7 +21,7 @@ This quickstart is written for first-time users and takes you from zero to a run
 Open terminal A:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 go run ./cmd/api-gateway
 ```
 
@@ -30,7 +30,7 @@ go run ./cmd/api-gateway
 Open terminal B:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 go run ./worker/cmd/worker-agent
 ```
 
@@ -91,9 +91,9 @@ cat /tmp/splai-artifacts/job-1/t1-split/output.json | jq
 
 For guided docs written in instructional style, use:
 
-- `/Users/mchenetz/git/SPLAI/docs/reference/quickstart.md`
-- `/Users/mchenetz/git/SPLAI/docs/reference/user-guide.md`
-- `/Users/mchenetz/git/SPLAI/docs/reference/integration-guide.md`
+- `docs/reference/quickstart.md`
+- `docs/reference/user-guide.md`
+- `docs/reference/integration-guide.md`
 
 ## OpenAI-Compatible Mode (Drop-In for Existing Apps)
 
@@ -110,7 +110,7 @@ Supported endpoints:
 
 Current behavior:
 
-- Non-streaming only (`stream=true` is rejected)
+- Supports non-streaming and streaming (`stream=true`) modes
 - Calls are translated to SPLAI jobs and waited synchronously
 - Timeout controlled by `SPLAI_OPENAI_COMPAT_TIMEOUT_SECONDS` (default `60`)
 

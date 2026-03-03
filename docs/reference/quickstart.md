@@ -25,7 +25,7 @@ jq --version
 Open terminal A:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 go run ./cmd/api-gateway
 ```
 
@@ -34,7 +34,7 @@ go run ./cmd/api-gateway
 Open terminal B:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 go run ./worker/cmd/worker-agent
 ```
 
@@ -137,7 +137,7 @@ Event types include:
 Open terminal D:
 
 ```bash
-cd /Users/mchenetz/git/SPLAI
+cd <repo-root>
 SPLAI_WORKER_ID=worker-2 go run ./worker/cmd/worker-agent
 ```
 
@@ -157,4 +157,4 @@ curl -s http://localhost:8080/v1/jobs/job-1/tasks | jq
 
 For a full end-to-end guide (including OpenAI-compatible and Kubernetes examples), use:
 
-- `/Users/mchenetz/git/SPLAI/docs/reference/user-guide.md`
+- `docs/reference/user-guide.md`

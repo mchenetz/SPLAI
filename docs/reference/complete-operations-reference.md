@@ -19,12 +19,12 @@ SPLAI consists of:
 
 ## 2.1 Make Targets
 
-From repository root (`/Users/mchenetz/git/DAIEF`):
+From repository root:
 
 ```bash
 make build           # go build ./...
 make test            # go test ./...
-make proto           # regenerate proto stubs
+make proto           # regenerate protobuf/grpc artifacts
 make infra-up        # docker compose up postgres+redis for local persistent mode
 make infra-down      # docker compose down
 make build-worker    # build dist/splai-worker
@@ -511,7 +511,7 @@ SPLAI_OPENAI_COMPAT=true
 
 Compatibility notes:
 
-- `stream=true` is not supported
+- `stream=true` enables SSE chunk streaming with a terminal `[DONE]` event
 - request is translated into internal job execution and polled until completion or timeout
 
 Example request:
@@ -901,7 +901,7 @@ splaictl verify --url http://localhost:8080 --worker-id <worker-id> --token <tok
 - `heartbeat request failed`: check worker token, URL, and network reachability
 - `tenant action denied`: token lacks required tenant or action scope
 - `confirmation token required for large requeue`: include `X-SPLAI-Confirm` and set matching `SPLAI_ADMIN_REQUEUE_CONFIRM_TOKEN`
-- `stream=true is not supported`: disable streaming for compatibility endpoints
+- stream clients not receiving updates: verify endpoint returns `text/event-stream` and consumes SSE lines until `[DONE]`
 
 ## 12. Reference File Index
 

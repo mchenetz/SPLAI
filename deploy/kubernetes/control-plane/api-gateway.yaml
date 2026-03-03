@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: ghcr.io/example/splai-api-gateway:v0.1.0
+          image: ghcr.io/mchenetz/splai-api-gateway:v0.1.0
           env:
             - name: SPLAI_STORE
               value: postgres

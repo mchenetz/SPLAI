@@ -15,5 +15,5 @@ spec:
     spec:
       containers:
         - name: scheduler
-          image: ghcr.io/example/splai-scheduler:v0.1.0
+          image: ghcr.io/mchenetz/splai-scheduler:v0.1.0
           args: []
